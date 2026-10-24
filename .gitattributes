@@ -1,0 +1,5 @@
+# Store text files with Linux line endings (LF) in the repo, even when
+# committed from Windows. Prevents CRLF problems in Docker, YAML and CI.
+* text=auto eol=lf
+*.png binary
+*.pdf binary
