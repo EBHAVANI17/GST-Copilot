@@ -26,7 +26,8 @@ _TENS = {
 }  # fmt: skip
 _SCALES = {"hundred": 100, "thousand": 1000, "lakh": 100_000, "crore": 10_000_000}
 
-_WORD = "|".join([*_UNITS, *_TENS, *_SCALES])
+NUMBER_WORDS = [*_UNITS, *_TENS, *_SCALES]
+_WORD = "|".join(NUMBER_WORDS)
 _NUM = rf"(?:{_WORD})(?:[\s-]+(?:and[\s-]+)?(?:{_WORD}))*"
 _FOLLOWING = (
     r"days?|months?|years?|weeks?|hours?|per\s*cent\.?|percent|rupees|"

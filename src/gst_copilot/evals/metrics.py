@@ -1,7 +1,12 @@
 """Evaluation metrics. Pure functions, so they are easy to test and trust."""
 
 import math
+import re
 from collections.abc import Sequence
+
+from gst_copilot.ingest.numbers import NUMBER_WORDS
+
+_NUMBER_WORDS = "|".join(NUMBER_WORDS)
 
 
 def first_relevant_rank(retrieved_doc_ids: Sequence[str], expected: set[str]) -> int | None:
@@ -26,9 +31,28 @@ def mean_reciprocal_rank(ranks: Sequence[int | None]) -> float:
     return sum(1.0 / r for r in ranks if r is not None) / len(ranks)
 
 
+# Indexing writes "one hundred and eighty (180) days" (ingest/numbers.py). Keywords are
+# copied from the official text ("one hundred and eighty days"), so drop the added
+# digits before matching, or the metric punishes our own normalisation.
+_ADDED_DIGITS = re.compile(rf"\b({_NUMBER_WORDS})\s\(\d+\)")
+
+
+def _normalise(text: str) -> str:
+    return " ".join(_ADDED_DIGITS.sub(r"\1", text.lower()).split())
+
+
 def contains_all(text: str, keywords: Sequence[str]) -> bool:
-    lowered = text.lower()
-    return all(k.lower() in lowered for k in keywords)
+    lowered = _normalise(text)
+    return all(_normalise(k) in lowered for k in keywords)
+
+
+def keyword_recall(text: str, keywords: Sequence[str]) -> float:
+    """Share of expected keywords present (1.0 = all). Gentler than contains_all:
+    an answer with 4 of 5 key phrases scores 0.8 instead of failing outright."""
+    if not keywords:
+        return 1.0
+    lowered = _normalise(text)
+    return sum(1 for k in keywords if _normalise(k) in lowered) / len(keywords)
 
 
 def percentile(values: Sequence[float], p: float) -> float:
@@ -40,6 +64,6 @@ def percentile(values: Sequence[float], p: float) -> float:
     return ordered[index]
 
 
-def ratio(numerator: int, denominator: int) -> float | None:
+def ratio(numerator: float, denominator: int) -> float | None:
     """None (not 0) when there is nothing to measure, so reports don't mislead."""
     return round(numerator / denominator, 3) if denominator else None

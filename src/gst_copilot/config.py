@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: float = 60.0
+    # Hard cap on answer length. Stops runaway answers (one m1-v1 answer ran to
+    # 2,500 characters and dominated p95 latency). Truncated answers are flagged.
+    llm_max_tokens: int = 512
+    # > 0 discourages repeating the same words (0 = off). Legal answers repeat terms
+    # like "input tax credit" legitimately, so keep it small if you use it.
+    llm_frequency_penalty: float = 0.0
+    # Which prompt in rag/prompt.py PROMPTS to use. m2-v3 won the ablation (ADR 0007).
+    prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5"] = "m2-v3"
 
     @property
     def chunker_version(self) -> str:
