@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gst_copilot.config import get_settings
 from gst_copilot.embeddings import Embedder
 from gst_copilot.rag.llm import LLMClient
-from gst_copilot.rag.prompt import PROMPT_VERSION, build_messages, cited_refs, is_refusal
+from gst_copilot.rag.prompt import build_messages, cited_refs, is_partial, is_refusal
 from gst_copilot.rag.rerank import Reranker, rerank
 from gst_copilot.rag.retriever import RetrievedChunk, candidate_pool, search
 
@@ -25,8 +25,10 @@ class AskResult:
     cited: list[str] = field(default_factory=list)
     invalid_citations: list[str] = field(default_factory=list)
     refused: bool = False
+    partial: bool = False  # answered part, said the rest is not covered
+    truncated: bool = False  # the answer hit llm_max_tokens and was cut off
     timings_ms: dict[str, float] = field(default_factory=dict)
-    prompt_version: str = PROMPT_VERSION
+    prompt_version: str | None = None  # None when no LLM was called
     model: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
@@ -60,7 +62,8 @@ async def ask(
     if llm is None:
         return AskResult(mode="retrieval_only", answer=None, retrieved=chunks, timings_ms=timings)
 
-    completion = await llm.complete(build_messages(question, chunks))
+    version = get_settings().prompt_version
+    completion = await llm.complete(build_messages(question, chunks, version))
     t3 = time.perf_counter()
     timings["generate"] = _ms(t2, t3)
 
@@ -74,6 +77,9 @@ async def ask(
         # A tag the model invented is a red flag: it is citing something it wasn't shown.
         invalid_citations=[r for r in refs if r not in allowed],
         refused=is_refusal(completion.text),
+        partial=is_partial(completion.text),
+        truncated=completion.truncated,
+        prompt_version=version,
         timings_ms=timings,
         model=completion.model,
         prompt_tokens=completion.prompt_tokens,
@@ -85,6 +91,9 @@ async def ask(
             "fields": {
                 "mode": result.mode,
                 "refused": result.refused,
+                "partial": result.partial,
+                "truncated": result.truncated,
+                "prompt_version": result.prompt_version,
                 "cited": len(result.cited),
                 "invalid_citations": len(result.invalid_citations),
                 "prompt_tokens": result.prompt_tokens,

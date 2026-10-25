@@ -40,9 +40,11 @@ class AskResponse(BaseModel):
     mode: Literal["generated", "retrieval_only", "no_results"]
     answer: str | None
     refused: bool
+    partial: bool
+    truncated: bool
     passages: list[Passage]
     invalid_citations: list[str]
-    prompt_version: str
+    prompt_version: str | None
     model: str | None
     timings_ms: dict[str, float]
     disclaimer: str = "Information, not tax advice."
@@ -69,6 +71,8 @@ async def ask_endpoint(
         mode=result.mode,
         answer=result.answer,
         refused=result.refused,
+        partial=result.partial,
+        truncated=result.truncated,
         passages=[
             Passage(
                 ref=c.ref,
