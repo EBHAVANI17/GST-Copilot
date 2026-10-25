@@ -49,7 +49,9 @@ jobs:
       APP_ENV: ci
       DATABASE_URL: postgresql+asyncpg://gst:gst@localhost:5432/gst_copilot
       REDIS_URL: redis://localhost:6379/0
-      EMBEDDING_PROVIDER: fake  # no model download in CI; the real model is tested locally
+      # No model downloads in CI; the real models are tested locally.
+      EMBEDDING_PROVIDER: fake
+      RERANKER: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

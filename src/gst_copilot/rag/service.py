@@ -7,10 +7,12 @@ from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gst_copilot.config import get_settings
 from gst_copilot.embeddings import Embedder
 from gst_copilot.rag.llm import LLMClient
 from gst_copilot.rag.prompt import PROMPT_VERSION, build_messages, cited_refs, is_refusal
-from gst_copilot.rag.retriever import RetrievedChunk, search
+from gst_copilot.rag.rerank import Reranker, rerank
+from gst_copilot.rag.retriever import RetrievedChunk, candidate_pool, search
 
 log = logging.getLogger("gst_copilot.rag")
 
@@ -36,13 +38,22 @@ async def ask(
     embedder: Embedder,
     llm: LLMClient | None,
     k: int,
+    reranker: Reranker | None = None,
 ) -> AskResult:
     t0 = time.perf_counter()
     qvec = embedder.embed_query(question)
     t1 = time.perf_counter()
-    chunks = await search(session, qvec, k, query_text=question)
-    t2 = time.perf_counter()
-    timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
+    if reranker is None:
+        chunks = await search(session, qvec, k, query_text=question)
+        t2 = time.perf_counter()
+        timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
+    else:
+        n = max(get_settings().rerank_candidates, k)
+        pool = await candidate_pool(session, qvec, question, n)
+        tr = time.perf_counter()
+        chunks = rerank(reranker, question, pool, k)
+        t2 = time.perf_counter()
+        timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, tr), "rerank": _ms(tr, t2)}
 
     if not chunks:
         return AskResult(mode="no_results", answer=None, retrieved=[], timings_ms=timings)

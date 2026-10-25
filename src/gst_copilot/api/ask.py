@@ -10,6 +10,7 @@ from gst_copilot.config import get_settings
 from gst_copilot.db.session import get_session
 from gst_copilot.embeddings import Embedder, get_embedder
 from gst_copilot.rag.llm import LLMClient, LLMError, get_llm
+from gst_copilot.rag.rerank import Reranker, get_reranker
 from gst_copilot.rag.service import ask
 
 router = APIRouter(tags=["ask"])
@@ -30,6 +31,7 @@ class Passage(BaseModel):
     # Rank in vector / keyword search (1 = best); null = not found by that search.
     vector_rank: int | None
     keyword_rank: int | None
+    rerank_score: float | None
     cited: bool
     text: str
 
@@ -52,10 +54,11 @@ async def ask_endpoint(
     session: Annotated[AsyncSession, Depends(get_session)],
     embedder: Annotated[Embedder, Depends(get_embedder)],
     llm: Annotated[LLMClient | None, Depends(get_llm)],
+    reranker: Annotated[Reranker | None, Depends(get_reranker)],
 ) -> AskResponse:
     k = body.top_k or get_settings().retrieval_top_k
     try:
-        result = await ask(body.question, session, embedder, llm, k)
+        result = await ask(body.question, session, embedder, llm, k, reranker)
     except LLMError as exc:
         # Don't leak provider details to the caller; they are in the logs.
         raise HTTPException(
@@ -76,6 +79,7 @@ async def ask_endpoint(
                 score=c.score,
                 vector_rank=c.vector_rank,
                 keyword_rank=c.keyword_rank,
+                rerank_score=c.rerank_score,
                 cited=c.ref in cited,
                 text=c.text,
             )

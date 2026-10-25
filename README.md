@@ -93,6 +93,11 @@ M2.1: section_hit@5 0.875 (8 questions). q008 (s.16(3)) now found; q003 (s.16(2)
 
 M2.2: section_hit@5 0.875 (vector) vs 0.75 (hybrid). Hybrid ranked documents better but lost the right section for q001/q002, so vector stays the default (ADR 0005). *p95 includes the LLM cold start.
 
+| M2.3 + cross-encoder reranker (MiniLM-L-6, default) | 1.0 | 0.938 | 0.25 | 0.83 | 1.00 | X s |
+
+M2.3: section_hit@5 1.0, section_hit@1 0.875 (was 0.375). Hybrid candidates and bge-reranker-base gave no gain (ADR 0006). Retrieval is no longer the bottleneck: 2 of 8 answerable questions are still refused with the right section retrieved.
+
+
 ## Develop
 
 ```bash

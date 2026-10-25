@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     retrieval_candidates: int = 30
     # RRF constant: score = sum of 1 / (rrf_k + rank). 60 is the usual default.
     rrf_k: int = 60
+    # Reranker (M2): re-score candidates with a cross-encoder, then keep the top k.
+    # "none" = off, "cross-encoder" = a fastembed model (downloads on first use),
+    # "fake" = word overlap, for tests and CI.
+    # Default on: it raised section_hit@1 from 0.375 to 0.875 on the golden set (ADR 0006).
+    reranker: Literal["none", "cross-encoder", "fake"] = "cross-encoder"
+    # Small and fast (80 MB). Stronger, slower: BAAI/bge-reranker-base (1 GB).
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    # Candidates per search list given to the reranker (hybrid: up to 2x this).
+    rerank_candidates: int = 20
 
     # --- LLM (any OpenAI-compatible API: Ollama, OpenAI, Groq, OpenRouter...) ---
     # Leave llm_base_url empty to run in retrieval-only mode (no generation).
