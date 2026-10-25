@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
     embedding_cache_dir: str | None = None
 
-    # --- Chunking and retrieval (M1 baseline; M2 replaces naive chunking) ---
+    # --- Chunking and retrieval ---
+    # "section": one section/rule per chunk with a context header (M2, default).
+    # "fixed": the M1 baseline of fixed-size windows, kept for comparison.
+    chunking_strategy: Literal["section", "fixed"] = "section"
     chunk_size_chars: int = 1200
     chunk_overlap_chars: int = 200
     retrieval_top_k: int = 5
@@ -44,6 +47,16 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_timeout_seconds: float = 60.0
+
+    @property
+    def chunker_version(self) -> str:
+        """Stored with each document; a change triggers re-chunking on the next ingest."""
+        from gst_copilot.ingest.structure import STRUCTURE_VERSION
+
+        version = STRUCTURE_VERSION if self.chunking_strategy == "section" else "v1"
+        return (
+            f"{self.chunking_strategy}-{version}-{self.chunk_size_chars}-{self.chunk_overlap_chars}"
+        )
 
 
 @lru_cache

@@ -5,6 +5,7 @@ One JSON object per line:
  "question": "...",
  "type": "lookup" | "date" | "multihop" | "unanswerable",
  "expected_doc_ids": ["CGST-ACT-2017"],          # where the answer is (empty if unanswerable)
+ "expected_sections": ["16"],                     # optional: section/rule numbers, no sub-section
  "expected_keywords": ["registration", "20 lakh"], # words a correct answer must contain
  "notes": "why this question matters"}
 
@@ -27,6 +28,7 @@ class GoldenItem:
     type: QuestionType
     expected_doc_ids: list[str] = field(default_factory=list)
     expected_keywords: list[str] = field(default_factory=list)
+    expected_sections: list[str] = field(default_factory=list)
     notes: str = ""
 
     @property
@@ -47,6 +49,7 @@ def load_golden(path: Path) -> list[GoldenItem]:
             type=raw["type"],
             expected_doc_ids=raw.get("expected_doc_ids", []),
             expected_keywords=raw.get("expected_keywords", []),
+            expected_sections=[str(s) for s in raw.get("expected_sections", [])],
             notes=raw.get("notes", ""),
         )
         if item.type not in TYPES:
@@ -57,6 +60,11 @@ def load_golden(path: Path) -> list[GoldenItem]:
             raise ValueError(f"line {n}: answerable questions need expected_doc_ids")
         if not item.answerable and item.expected_doc_ids:
             raise ValueError(f"line {n}: unanswerable questions must not list expected_doc_ids")
+        if not item.answerable and item.expected_sections:
+            raise ValueError(f"line {n}: unanswerable questions must not list expected_sections")
+        bad = [s for s in item.expected_sections if "(" in s]
+        if bad:
+            raise ValueError(f"line {n}: use section numbers only, e.g. '16' not {bad[0]!r}")
         ids.add(item.id)
         items.append(item)
     return items

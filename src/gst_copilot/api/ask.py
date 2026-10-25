@@ -25,6 +25,7 @@ class Passage(BaseModel):
     doc_id: str
     title: str
     source_url: str
+    section: str | None
     score: float
     cited: bool
     text: str
@@ -68,6 +69,7 @@ async def ask_endpoint(
                 doc_id=c.doc_id,
                 title=c.title,
                 source_url=c.source_url,
+                section=c.section,
                 score=c.score,
                 cited=c.ref in cited,
                 text=c.text,

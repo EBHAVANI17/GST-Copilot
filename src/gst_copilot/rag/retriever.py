@@ -21,6 +21,7 @@ class RetrievedChunk:
     chunk_index: int
     text: str
     score: float
+    section: str | None = None
 
     @property
     def ref(self) -> str:
@@ -37,6 +38,7 @@ async def search(session: AsyncSession, query_vector: list[float], k: int) -> li
             Document.source_url,
             Chunk.chunk_index,
             Chunk.text,
+            Chunk.section,
             distance.label("distance"),
         )
         .join(Document, Document.id == Chunk.document_id)
@@ -52,6 +54,7 @@ async def search(session: AsyncSession, query_vector: list[float], k: int) -> li
             chunk_index=r.chunk_index,
             text=r.text,
             score=round(1.0 - float(r.distance), 4),
+            section=r.section,
         )
         for r in rows
     ]

@@ -70,3 +70,36 @@ async def test_vector_search_finds_the_right_document(session: AsyncSession) -> 
         hits = await search(session, EMB.embed_query(question), k=3)
         assert hits[0].doc_id == expected, f"{question!r} -> {[h.doc_id for h in hits]}"
         assert hits[0].score >= hits[-1].score  # sorted best first
+
+
+async def test_changing_the_chunker_rechunks_and_stores_sections(
+    session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    act = Path(__file__).parent / "fixtures" / "widget_act.txt"
+    (tmp_path / "act.txt").write_text(act.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "manifest.csv").write_text(
+        "doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file\n"
+        "WIDGET-ACT,act,Widget Levy Act (synthetic),https://example.invalid/w,"
+        "2020-01-01,2020-04-01,,act.txt\n"
+    )
+
+    monkeypatch.setenv("CHUNKING_STRATEGY", "fixed")
+    get_settings.cache_clear()
+    first = await ingest_manifest(session, EMB, tmp_path / "manifest.csv")
+    assert first.added == ["WIDGET-ACT"]
+    assert set(await session.scalars(select(Chunk.section))) == {None}
+
+    monkeypatch.setenv("CHUNKING_STRATEGY", "section")
+    get_settings.cache_clear()
+    second = await ingest_manifest(session, EMB, tmp_path / "manifest.csv")
+    assert second.updated == ["WIDGET-ACT"], "same file, new chunker: must re-chunk"
+    sections = set(await session.scalars(select(Chunk.section)))
+    assert {"16", "17", "17A"} <= sections
+
+    third = await ingest_manifest(session, EMB, tmp_path / "manifest.csv")
+    assert third.unchanged == ["WIDGET-ACT"]
+
+    hits = await search(session, EMB.embed_query("claimed depreciation on the levy component"), 3)
+    assert hits[0].section == "16"
+    assert hits[0].text.startswith("Section 16. Eligibility and conditions")
+    get_settings.cache_clear()
