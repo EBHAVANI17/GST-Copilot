@@ -49,6 +49,7 @@ jobs:
       APP_ENV: ci
       DATABASE_URL: postgresql+asyncpg://gst:gst@localhost:5432/gst_copilot
       REDIS_URL: redis://localhost:6379/0
+      EMBEDDING_PROVIDER: fake  # no model download in CI; the real model is tested locally
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,6 +59,12 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: Migrate
         run: alembic upgrade head
+      - name: Integration tests (real Postgres + pgvector)
+        run: pytest -q -m integration
+      - name: Retrieval smoke eval on the synthetic corpus
+        run: |
+          python -m gst_copilot.ingest tests/fixtures/sample_corpus/manifest.csv
+          python -m gst_copilot.evals tests/fixtures/sample_corpus/golden.jsonl --k 3 --min-hit-at-k 1.0
       - name: Start API and check readiness
         run: |
           uvicorn gst_copilot.api.main:app --port 8000 &

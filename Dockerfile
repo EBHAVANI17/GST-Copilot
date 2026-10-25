@@ -16,7 +16,10 @@ COPY --from=builder /wheels /wheels
 RUN pip install /wheels/* && rm -rf /wheels
 COPY alembic.ini ./
 COPY migrations ./migrations
+RUN mkdir -p /home/app/.cache && chown -R app:app /home/app/.cache
 USER app
+# fastembed stores downloaded models here (a volume in docker-compose, so it downloads once).
+ENV EMBEDDING_CACHE_DIR=/home/app/.cache/fastembed
 EXPOSE 8000
 # The platform restarts the container if this fails repeatedly.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

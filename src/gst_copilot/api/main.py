@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request, Response
 
 from gst_copilot import __version__
+from gst_copilot.api.ask import router as ask_router
 from gst_copilot.api.health import router as health_router
 from gst_copilot.config import get_settings
 from gst_copilot.logging import configure_logging, request_id_var
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="GST Copilot", version=__version__)
     app.include_router(health_router)
+    app.include_router(ask_router)
 
     @app.middleware("http")
     async def request_context(

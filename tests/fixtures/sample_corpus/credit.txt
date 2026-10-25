@@ -1,0 +1,8 @@
+SYNTHETIC TEST DOCUMENT. NOT REAL LAW. Used only by automated tests.
+
+Widget Levy Rules, Rule 12: Input credit.
+
+A registered buyer may take input credit of the levy paid on widget purchases only when
+the supplier's invoice appears in the buyer's monthly credit statement. Credit on an
+invoice that does not appear in the monthly credit statement shall not be taken until it
+appears. The buyer must hold the original invoice and must have received the widgets.
