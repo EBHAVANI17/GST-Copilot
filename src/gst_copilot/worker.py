@@ -24,13 +24,28 @@ async def ping(ctx: dict[str, Any], message: str = "pong") -> str:
     return message
 
 
+async def ingest(ctx: dict[str, Any], manifest_path: str) -> dict[str, Any]:
+    """Load documents listed in a manifest into the index (see gst_copilot.ingest)."""
+    from dataclasses import asdict
+    from pathlib import Path
+
+    from gst_copilot.db.session import get_sessionmaker
+    from gst_copilot.embeddings import get_embedder
+    from gst_copilot.ingest.pipeline import ingest_manifest
+
+    async with get_sessionmaker()() as session:
+        report = await ingest_manifest(session, get_embedder(), Path(manifest_path))
+    log.info("ingest job finished", extra={"fields": asdict(report)})
+    return asdict(report)
+
+
 async def startup(ctx: dict[str, Any]) -> None:
     configure_logging(get_settings().log_level)
     log.info("worker started")
 
 
 class WorkerSettings:
-    functions = [ping]
+    functions = [ping, ingest]
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
     max_jobs = 10

@@ -14,7 +14,7 @@ A date-aware GST compliance assistant for small businesses and their accountants
 | Milestone | Scope | Status |
 |---|---|---|
 | M0 | Skeleton: API, worker, Postgres + pgvector, Redis, migrations, CI/CD | ✅ |
-| M1 | Baseline RAG + golden set | ⏳ |
+| M1 | Baseline RAG: ingestion, embeddings, vector search, `/ask`, evaluation harness | ✅ |
 | M2 | Retrieval quality + CI eval gate | |
 | M3 | Observability, cost, latency | |
 | M4 | ITC reconciliation + invoice checker | |
@@ -32,12 +32,13 @@ A date-aware GST compliance assistant for small businesses and their accountants
 | p95 latency, Q&A | ≤ 5 s | – |
 | New notification indexed | within 24 h | – |
 
-## Architecture (M0)
+## Architecture (M1)
 
 ```
-client → FastAPI (/health, /ready) ──→ PostgreSQL + pgvector
-                    │                     ↑ alembic migrations
-                    └─→ Redis ←── arq worker (background jobs)
+corpus/manifest.csv ─→ ingest (CLI or worker job): extract → chunk → embed ─→ Postgres + pgvector
+                                                                              (documents, chunks, HNSW index)
+client ─→ FastAPI /ask: embed question → vector search top-k → grounded prompt → LLM → citation check
+              /health, /ready                                                     (any OpenAI-compatible API)
 ```
 
 Design decisions are recorded in [docs/adr](docs/adr).
@@ -54,6 +55,26 @@ curl http://localhost:8000/ready  # {"status":"ready", ...}
 
 Open http://localhost:8000/docs for the interactive API docs.
 
+### Load documents and ask a question
+
+```bash
+# 1. Put official PDFs in corpus/raw/ and list them in corpus/manifest.csv (see corpus/README.md)
+python -m gst_copilot.ingest corpus/manifest.csv
+
+# 2. Ask (retrieval-only until an LLM is configured in .env)
+curl -X POST http://localhost:8000/ask -H "content-type: application/json" \
+     -d '{"question": "What does the Act say about registration?"}'
+
+# 3. Evaluate on your golden set
+python -m gst_copilot.evals evals/golden.jsonl
+```
+
+## Results
+
+| Version | hit@5 | MRR | Keyword correctness | Citation accuracy | Correct refusal | p95 latency |
+|---|---|---|---|---|---|---|
+| M1 baseline (fixed chunks, vector only) | – | – | – | – | – | – |
+
 ## Develop
 
 ```bash
@@ -64,7 +85,8 @@ pre-commit install
 
 ruff check . && ruff format --check .
 mypy src
-pytest -q
+pytest -q                                    # unit tests
+EMBEDDING_PROVIDER=fake pytest -m integration  # needs Postgres (docker compose up db)
 ```
 
 ## Project layout
@@ -77,7 +99,14 @@ src/gst_copilot/
   logging.py         JSON logs with request IDs
   db/session.py      async SQLAlchemy engine and sessions
   db/models.py       tables
-  worker.py          arq background worker
+  worker.py          arq background worker (ping, ingest jobs)
+  embeddings.py      Embedder interface: fastembed (local) and fake (tests)
+  ingest/            manifest → extract → chunk → embed → store (idempotent)
+  rag/               retriever (pgvector), prompt, LLM client, ask service
+  api/ask.py         POST /ask
+  evals/             golden set loader, metrics, evaluation CLI
+corpus/              manifest.csv (committed) and raw/ documents (not committed)
+evals/               golden.jsonl: your test questions
 migrations/          alembic database migrations
 tests/               unit tests (no external services needed)
 docs/adr/            architecture decision records

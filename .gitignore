@@ -14,7 +14,9 @@ dist/
 
 # Secrets and local data
 .env
-data/
+corpus/raw/*
+!corpus/raw/.gitkeep
+reports/
 *.pdf
 
 # Editors

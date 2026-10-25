@@ -1,0 +1,12 @@
+SYNTHETIC TEST DOCUMENT. NOT REAL LAW. Used only by automated tests.
+
+Widget Levy Act, Chapter 2: Registration.
+
+Section 4. Every supplier of widgets shall apply for registration within thirty days
+from the date on which the supplier first becomes liable to registration.
+
+Section 5. A supplier becomes liable to registration when the aggregate value of widget
+supplies in a financial year exceeds the registration threshold of ninety-nine units.
+
+Section 6. A registered supplier shall display the registration number at the principal
+place of business and on every invoice issued.

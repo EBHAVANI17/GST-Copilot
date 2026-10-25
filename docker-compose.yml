@@ -43,7 +43,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://gst:gst@db:5432/gst_copilot
       REDIS_URL: redis://redis:6379/0
+      # Inside a container, "localhost" is the container itself. To reach Ollama
+      # running on your laptop, use host.docker.internal instead.
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-}
     ports: ["8000:8000"]
+    volumes:
+      - model_cache:/home/app/.cache
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
@@ -55,9 +60,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://gst:gst@db:5432/gst_copilot
       REDIS_URL: redis://redis:6379/0
+      LLM_BASE_URL: ${DOCKER_LLM_BASE_URL:-}
+    volumes:
+      - model_cache:/home/app/.cache
+      - ./corpus:/app/corpus:ro
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
 
 volumes:
   pgdata:
+  model_cache:

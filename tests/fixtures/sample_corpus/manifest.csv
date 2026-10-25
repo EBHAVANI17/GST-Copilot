@@ -1,0 +1,4 @@
+doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file
+SAMPLE-ACT,act,Widget Levy Act (synthetic),https://example.invalid/act,2020-01-01,2020-04-01,,registration.txt
+SAMPLE-RULES,rule,Widget Levy Rules (synthetic),https://example.invalid/rules,2020-02-01,2020-04-01,,credit.txt
+SAMPLE-SCHEDULE,notification,Widget Levy Schedule (synthetic),https://example.invalid/schedule,2021-06-01,2021-07-01,,schedule.txt
