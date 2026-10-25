@@ -9,7 +9,18 @@ change a model, write a new migration (alembic revision --autogenerate).
 from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Computed,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Must match settings.embedding_dim and the VECTOR(n) column in migration 0002.
@@ -57,4 +68,8 @@ class Chunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer)  # position within the document
     text: Mapped[str] = mapped_column(Text)
     section: Mapped[str | None] = mapped_column(String(20))  # "16", "43A"; None if unknown
+    # Words of `text` for keyword search, computed by Postgres (migration 0004).
+    tsv: Mapped[str] = mapped_column(
+        TSVECTOR, Computed("to_tsvector('english', text)", persisted=True)
+    )
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))

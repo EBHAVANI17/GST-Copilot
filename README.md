@@ -88,6 +88,11 @@ Both models: false refusal 0.25, invalid citation rate 0.10. The 7B model improv
 
 M2.1: section_hit@5 0.875 (8 questions). q008 (s.16(3)) now found; q003 (s.16(2) 180-day proviso) lost. Invalid citations 0.10 → 0.00, false refusals 0.25 → 0.125; answers without citation 0.167 → 0.286.
 
+| M2.2 + numbers in digits, vector (default) | 1.0 | 0.65 | 0.25 | 0.71 | 1.00 | 17.7 s* |
+| M2.2 hybrid RRF (opt-in, not default) | 1.0 | 0.854 | 0.25 | 1.00 | 1.00 | 9.7 s* |
+
+M2.2: section_hit@5 0.875 (vector) vs 0.75 (hybrid). Hybrid ranked documents better but lost the right section for q001/q002, so vector stays the default (ADR 0005). *p95 includes the LLM cold start.
+
 ## Develop
 
 ```bash

@@ -16,6 +16,9 @@ Three steps:
    e.g. "Section 16. Eligibility and conditions for taking input tax credit",
    so even a small piece says what it is about.
 
+Numbers written in words get their digits added ("one hundred and eighty (180)
+days"), see numbers.py.
+
 Documents without detectable headings (circulars, notifications) fall back to the
 fixed-size chunks from M1.
 """
@@ -25,10 +28,11 @@ from collections import Counter
 from dataclasses import dataclass
 
 from gst_copilot.ingest.chunking import chunk_text
+from gst_copilot.ingest.numbers import annotate_numbers
 
 # Bumped whenever the output of this module changes, so the pipeline re-chunks
 # documents that were indexed with an older version.
-STRUCTURE_VERSION = "v1"
+STRUCTURE_VERSION = "v2"  # v2: numbers in words also written in digits
 
 
 @dataclass(frozen=True)
@@ -173,5 +177,6 @@ def _pack(body: str, budget: int, overlap: int) -> list[str]:
 
 
 def structured_chunks(text: str, size: int, overlap: int, doc_type: str) -> list[Piece]:
-    """Clean, split into sections, then chunk. The entry point used by the pipeline."""
-    return chunk_sections(split_sections(strip_noise(text)), size, overlap, doc_type)
+    """Clean, write numbers in digits, split into sections, then chunk (pipeline entry point)."""
+    clean = annotate_numbers(strip_noise(text))
+    return chunk_sections(split_sections(clean), size, overlap, doc_type)

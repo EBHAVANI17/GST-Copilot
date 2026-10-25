@@ -28,7 +28,7 @@ from gst_copilot.evals.metrics import (
     percentile,
     ratio,
 )
-from gst_copilot.rag.llm import get_llm
+from gst_copilot.rag.llm import LLMError, get_llm
 from gst_copilot.rag.prompt import PROMPT_VERSION
 from gst_copilot.rag.service import ask
 
@@ -43,7 +43,14 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
     async with get_sessionmaker()() as session:
         for item in items:
             t0 = time.perf_counter()
-            result = await ask(item.question, session, embedder, llm, k)
+            llm_error = None
+            try:
+                result = await ask(item.question, session, embedder, llm, k)
+            except LLMError as exc:
+                # One failed LLM call must not lose the whole run: keep the retrieval
+                # result for this question and record the error.
+                llm_error = str(exc)
+                result = await ask(item.question, session, embedder, None, k)
             latencies.append((time.perf_counter() - t0) * 1000)
             retrieved_ids = [c.doc_id for c in result.retrieved]
             rank = first_relevant_rank(retrieved_ids, set(item.expected_doc_ids))
@@ -63,7 +70,11 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
                     "rank": rank,
                     "section_rank": section_rank,
                     "has_expected_sections": bool(item.expected_sections),
-                    "retrieved": [f"{c.ref} (s.{c.section})" for c in result.retrieved],
+                    "retrieved": [
+                        f"{c.ref} (s.{c.section}, vec #{c.vector_rank}, kw #{c.keyword_rank})"
+                        for c in result.retrieved
+                    ],
+                    "llm_error": llm_error,
                     "answer": result.answer,
                     "refused": result.refused,
                     "keywords_ok": (
@@ -94,6 +105,7 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             "chunker_version": settings.chunker_version,
             "chunk_size_chars": settings.chunk_size_chars,
             "chunk_overlap_chars": settings.chunk_overlap_chars,
+            "retrieval_mode": settings.retrieval_mode,
             "llm_model": settings.llm_model or None,
             "prompt_version": PROMPT_VERSION,
         },
@@ -119,7 +131,7 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             }
         )
     if llm is not None:
-        answered = [r for r in answerable if not r["refused"]]
+        answered = [r for r in answerable if not r["refused"] and not r["llm_error"]]
         with_citation = [r for r in answered if r["has_citation"]]
         report["answers"] = {
             "keyword_correctness": ratio(
@@ -134,6 +146,7 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             ),
             "correct_refusal": ratio(sum(r["refused"] for r in unanswerable), len(unanswerable)),
             "false_refusal": ratio(sum(r["refused"] for r in answerable), len(answerable)),
+            "llm_errors": sum(1 for r in rows if r["llm_error"]),
         }
     return report
 
@@ -154,6 +167,12 @@ def print_summary(report: dict[str, Any]) -> None:
     ]
     if section_misses:
         print(f"Section not in top {k}: {', '.join(section_misses)}")
+    errors = report.get("answers", {}).get("llm_errors", 0)
+    if errors:
+        print(
+            f"\nWARNING: {errors} LLM call(s) failed, so the answer metrics are not valid."
+            " Is the LLM running? Retrieval metrics are still correct."
+        )
 
 
 def main() -> None:

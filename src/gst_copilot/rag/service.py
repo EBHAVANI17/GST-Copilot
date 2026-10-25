@@ -40,7 +40,7 @@ async def ask(
     t0 = time.perf_counter()
     qvec = embedder.embed_query(question)
     t1 = time.perf_counter()
-    chunks = await search(session, qvec, k)
+    chunks = await search(session, qvec, k, query_text=question)
     t2 = time.perf_counter()
     timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
 
