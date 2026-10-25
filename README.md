@@ -97,6 +97,10 @@ M2.2: section_hit@5 0.875 (vector) vs 0.75 (hybrid). Hybrid ranked documents bet
 
 M2.3: section_hit@5 1.0, section_hit@1 0.875 (was 0.375). Hybrid candidates and bge-reranker-base gave no gain (ADR 0006). Retrieval is no longer the bottleneck: 2 of 8 answerable questions are still refused with the right section retrieved.
 
+| M2.4 prompt m2-v3 + max_tokens (3 runs) | 1.0 | 0.938 | <keyword_recall> | <citation_section_accuracy> | 1.00 | <p95> s |
+
+M2.4: prompt ablation (ADR 0007), one change each on m1-v1: "at most 6 points" (m2-v3) won; section headers hurt. New metrics: keyword_recall, context_recall, citation_section_accuracy, partial_answers; --runs 3 averages LLM noise.
+
 
 ## Develop
 
