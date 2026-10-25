@@ -73,7 +73,9 @@ python -m gst_copilot.evals evals/golden.jsonl
 
 | Version | hit@5 | MRR | Keyword correctness | Citation accuracy | Correct refusal | p95 latency |
 |---|---|---|---|---|---|---|
-| M1 baseline (fixed chunks, vector only) | – | – | – | – | – | – |
+| M1 baseline (fixed chunks, vector only) | 0.875 | 0.635 | – | – | – | 58.5 ms (retrieval only) |
+
+Golden set: 10 questions (8 answerable, 2 unanswerable), 3 documents. Document-level hit@k; section-level matching comes in M2. Missed: q008 (s.16(3) diluted inside a fixed-size chunk).
 
 ## Develop
 
