@@ -75,8 +75,13 @@ python -m gst_copilot.evals evals/golden.jsonl
 |---|---|---|---|---|---|---|
 | M1 baseline (fixed chunks, vector only) | 0.875 | 0.635 | – | – | – | 58.5 ms (retrieval only) |
 
+
 Golden set: 10 questions (8 answerable, 2 unanswerable), 3 documents. Document-level hit@k; section-level matching comes in M2. Missed: q008 (s.16(3) diluted inside a fixed-size chunk).
 
+| M1 + qwen2.5:3b (Ollama, RTX 4050) | 0.875 | 0.635 | 0.25 | 0.60 | 1.00 | 3.0 s |
+| M1 + qwen2.5:7b (18% on CPU) | 0.875 | 0.635 | 0.25 | 0.80 | 1.00 | 32.3 s |
+
+Both models: false refusal 0.25, invalid citation rate 0.10. The 7B model improved citations only, at 10x latency, so the bottleneck is retrieval, not model size. Development stays on 3B; models are compared again after M2.
 ## Develop
 
 ```bash
