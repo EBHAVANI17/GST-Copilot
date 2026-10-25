@@ -134,3 +134,28 @@ async def test_hybrid_search_matches_digits_against_numbers_in_words(
     vector_only = await search(session, EMB.embed_query(question), k=3)
     assert all(h.keyword_rank is None for h in vector_only)
     get_settings.cache_clear()
+
+
+async def test_reranker_over_a_hybrid_candidate_pool(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gst_copilot.rag.rerank import FakeReranker
+    from gst_copilot.rag.service import ask
+
+    await ingest_manifest(session, EMB, FIXTURES / "manifest.csv")
+    monkeypatch.setenv("RETRIEVAL_MODE", "hybrid")
+    monkeypatch.setenv("RERANK_CANDIDATES", "5")
+    get_settings.cache_clear()
+    result = await ask(
+        "When can a buyer take input credit on widget purchases?",
+        session,
+        EMB,
+        None,
+        2,
+        FakeReranker(),
+    )
+    assert result.mode == "retrieval_only"
+    assert result.retrieved[0].doc_id == "SAMPLE-RULES"
+    assert result.retrieved[0].rerank_score is not None
+    assert set(result.timings_ms) == {"embed", "retrieve", "rerank"}
+    get_settings.cache_clear()

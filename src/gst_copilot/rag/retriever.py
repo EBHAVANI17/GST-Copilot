@@ -35,6 +35,7 @@ class RetrievedChunk:
     section: str | None = None
     vector_rank: int | None = None  # 1-based rank in each list; None = not in that list
     keyword_rank: int | None = None
+    rerank_score: float | None = None  # set when a reranker ordered the results
 
     @property
     def ref(self) -> str:
@@ -133,3 +134,15 @@ async def search(
     vector = await vector_search(session, query_vector, n)
     keyword = await keyword_search(session, query_vector, query_text, n)
     return rrf_fuse(vector, keyword, k, s.rrf_k)
+
+
+async def candidate_pool(
+    session: AsyncSession, query_vector: list[float], query_text: str, n: int
+) -> list[RetrievedChunk]:
+    """Wide candidate list for a reranker: top n from vector search, plus top n from
+    keyword search when RETRIEVAL_MODE=hybrid (duplicates merged, RRF order)."""
+    vector = await vector_search(session, query_vector, n)
+    if get_settings().retrieval_mode == "vector":
+        return [replace(c, vector_rank=i) for i, c in enumerate(vector.values(), start=1)]
+    keyword = await keyword_search(session, query_vector, query_text, n)
+    return rrf_fuse(vector, keyword, k=2 * n, rrf_k=get_settings().rrf_k)

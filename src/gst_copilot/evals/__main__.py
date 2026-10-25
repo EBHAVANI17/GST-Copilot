@@ -30,13 +30,15 @@ from gst_copilot.evals.metrics import (
 )
 from gst_copilot.rag.llm import LLMError, get_llm
 from gst_copilot.rag.prompt import PROMPT_VERSION
+from gst_copilot.rag.rerank import get_reranker
 from gst_copilot.rag.service import ask
 
 
-async def run(golden_path: Path, k: int) -> dict[str, Any]:
+async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[str, Any]:
     settings = get_settings()
     items = load_golden(golden_path)
-    embedder, llm = get_embedder(), get_llm()
+    embedder, reranker = get_embedder(), get_reranker()
+    llm = None if retrieval_only else get_llm()
     rows: list[dict[str, Any]] = []
     latencies: list[float] = []
 
@@ -45,12 +47,12 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             t0 = time.perf_counter()
             llm_error = None
             try:
-                result = await ask(item.question, session, embedder, llm, k)
+                result = await ask(item.question, session, embedder, llm, k, reranker)
             except LLMError as exc:
                 # One failed LLM call must not lose the whole run: keep the retrieval
                 # result for this question and record the error.
                 llm_error = str(exc)
-                result = await ask(item.question, session, embedder, None, k)
+                result = await ask(item.question, session, embedder, None, k, reranker)
             latencies.append((time.perf_counter() - t0) * 1000)
             retrieved_ids = [c.doc_id for c in result.retrieved]
             rank = first_relevant_rank(retrieved_ids, set(item.expected_doc_ids))
@@ -71,7 +73,8 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
                     "section_rank": section_rank,
                     "has_expected_sections": bool(item.expected_sections),
                     "retrieved": [
-                        f"{c.ref} (s.{c.section}, vec #{c.vector_rank}, kw #{c.keyword_rank})"
+                        f"{c.ref} (s.{c.section}, vec #{c.vector_rank}, kw #{c.keyword_rank}"
+                        f", rerank {c.rerank_score})"
                         for c in result.retrieved
                     ],
                     "llm_error": llm_error,
@@ -106,6 +109,7 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             "chunk_size_chars": settings.chunk_size_chars,
             "chunk_overlap_chars": settings.chunk_overlap_chars,
             "retrieval_mode": settings.retrieval_mode,
+            "reranker": reranker.name if reranker else None,
             "llm_model": settings.llm_model or None,
             "prompt_version": PROMPT_VERSION,
         },
@@ -181,6 +185,11 @@ def main() -> None:
     parser.add_argument("--k", type=int, default=get_settings().retrieval_top_k)
     parser.add_argument("--out", type=Path, default=Path("reports"))
     parser.add_argument(
+        "--retrieval-only",
+        action="store_true",
+        help="skip the LLM: retrieval metrics only, much faster (for retrieval experiments)",
+    )
+    parser.add_argument(
         "--min-hit-at-k",
         type=float,
         default=None,
@@ -188,7 +197,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    report = asyncio.run(run(args.golden, args.k))
+    report = asyncio.run(run(args.golden, args.k, args.retrieval_only))
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_file = args.out / f"eval-{stamp}.json"

@@ -20,6 +20,7 @@ from gst_copilot.evals.metrics import (
 from gst_copilot.rag import service
 from gst_copilot.rag.llm import LLMError, OpenAICompatibleClient, get_llm
 from gst_copilot.rag.prompt import REFUSAL, build_messages, cited_refs, is_refusal
+from gst_copilot.rag.rerank import FakeReranker, get_reranker
 from gst_copilot.rag.retriever import RetrievedChunk
 
 CHUNKS = [
@@ -135,8 +136,13 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     async def no_session() -> AsyncIterator[None]:
         yield None
 
+    async def fake_pool(session: Any, qvec: list[float], text: str, n: int) -> list[RetrievedChunk]:
+        return CHUNKS
+
     monkeypatch.setattr(service, "search", fake_search)
+    monkeypatch.setattr(service, "candidate_pool", fake_pool)
     app = create_app()
+    app.dependency_overrides[get_reranker] = lambda: None
     app.dependency_overrides[get_session] = no_session
     app.dependency_overrides[get_embedder] = lambda: FakeEmbedder(384)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -151,6 +157,16 @@ async def test_ask_retrieval_only_mode_without_llm(client: AsyncClient) -> None:
     body = r.json()
     assert body["mode"] == "retrieval_only" and body["answer"] is None
     assert [p["ref"] for p in body["passages"]] == ["SAMPLE-ACT#0", "SAMPLE-RULES#2"]
+
+
+async def test_ask_with_reranker_reorders_and_reports_scores(client: AsyncClient) -> None:
+    client.app.dependency_overrides[get_llm] = lambda: None  # type: ignore[attr-defined]
+    client.app.dependency_overrides[get_reranker] = FakeReranker  # type: ignore[attr-defined]
+    r = await client.post("/ask", json={"question": "What is the credit statement?"})
+    body = r.json()
+    assert [p["ref"] for p in body["passages"]] == ["SAMPLE-RULES#2", "SAMPLE-ACT#0"]
+    assert body["passages"][0]["rerank_score"] > body["passages"][1]["rerank_score"]
+    assert "rerank" in body["timings_ms"]
 
 
 async def test_ask_generated_answer_marks_cited_and_invalid(client: AsyncClient) -> None:
