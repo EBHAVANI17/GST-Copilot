@@ -34,14 +34,17 @@ class Document(Base):
     effective_from: Mapped[date | None] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
     sha256: Mapped[str] = mapped_column(String(64))  # detects when a source file changes
+    # How the document was chunked, e.g. "section-v1-1200-200". A different value
+    # means the chunking code or settings changed, so ingest re-chunks it.
+    chunker: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Chunk(Base):
     """A piece of a document's text plus its embedding vector.
 
-    M1 cuts documents into fixed-size overlapping windows. M2 replaces this
-    with structure-aware chunks (one section or rule per chunk) plus metadata.
+    M2: one section or rule per chunk (long ones split at sub-sections), with the
+    section number stored so evaluation can check the right section was found.
     """
 
     __tablename__ = "chunks"
@@ -53,4 +56,5 @@ class Chunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer)  # position within the document
     text: Mapped[str] = mapped_column(Text)
+    section: Mapped[str | None] = mapped_column(String(20))  # "16", "43A"; None if unknown
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))

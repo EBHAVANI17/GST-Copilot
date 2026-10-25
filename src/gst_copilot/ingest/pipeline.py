@@ -1,8 +1,9 @@
 """Ingestion: manifest -> text -> chunks -> embeddings -> database.
 
-Idempotent: running it twice does no extra work. Each document's file hash is
-stored; unchanged documents are skipped, changed ones are re-chunked and
-re-embedded, and documents removed from the manifest are deleted.
+Idempotent: running it twice does no extra work. Each document's file hash and
+chunker version are stored; unchanged documents are skipped, documents whose file
+or chunking changed are re-chunked and re-embedded, and documents removed from the
+manifest are deleted.
 """
 
 import hashlib
@@ -20,6 +21,7 @@ from gst_copilot.embeddings import Embedder
 from gst_copilot.ingest.chunking import chunk_text
 from gst_copilot.ingest.extract import extract_text
 from gst_copilot.ingest.manifest import ManifestEntry, load_manifest
+from gst_copilot.ingest.structure import Piece, structured_chunks
 
 log = logging.getLogger("gst_copilot.ingest")
 
@@ -55,30 +57,31 @@ async def ingest_manifest(
     for entry in entries:
         sha = file_sha256(entry.path)
         doc = existing.get(entry.doc_id)
-        if doc is not None and doc.sha256 == sha:
+        if doc is not None and doc.sha256 == sha and doc.chunker == settings.chunker_version:
             _copy_metadata(doc, entry)  # metadata edits in the CSV still apply
             report.unchanged.append(entry.doc_id)
             continue
 
         text = extract_text(entry.path)
-        pieces = chunk_text(text, settings.chunk_size_chars, settings.chunk_overlap_chars)
-        vectors = embedder.embed_documents(pieces)
+        pieces = chunk_document(text, entry.doc_type)
+        vectors = embedder.embed_documents([p.text for p in pieces])
 
         if doc is None:
-            doc = Document(doc_id=entry.doc_id, sha256=sha)
+            doc = Document(doc_id=entry.doc_id, sha256=sha, chunker=settings.chunker_version)
             _copy_metadata(doc, entry)
             session.add(doc)
             await session.flush()  # assigns doc.id
             report.added.append(entry.doc_id)
         else:
             doc.sha256 = sha
+            doc.chunker = settings.chunker_version
             _copy_metadata(doc, entry)
             await session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
             report.updated.append(entry.doc_id)
 
         session.add_all(
-            Chunk(document_id=doc.id, chunk_index=i, text=t, embedding=v)
-            for i, (t, v) in enumerate(zip(pieces, vectors, strict=True))
+            Chunk(document_id=doc.id, chunk_index=i, text=p.text, section=p.section, embedding=v)
+            for i, (p, v) in enumerate(zip(pieces, vectors, strict=True))
         )
         report.chunks_written += len(pieces)
         log.info(
@@ -96,6 +99,13 @@ async def ingest_manifest(
     await session.commit()
     report.seconds = round(time.perf_counter() - start, 2)
     return report
+
+
+def chunk_document(text: str, doc_type: str) -> list[Piece]:
+    s = get_settings()
+    if s.chunking_strategy == "fixed":
+        return [Piece(t, None) for t in chunk_text(text, s.chunk_size_chars, s.chunk_overlap_chars)]
+    return structured_chunks(text, s.chunk_size_chars, s.chunk_overlap_chars, doc_type)
 
 
 def _copy_metadata(doc: Document, entry: ManifestEntry) -> None:

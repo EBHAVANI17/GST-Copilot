@@ -47,12 +47,23 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             latencies.append((time.perf_counter() - t0) * 1000)
             retrieved_ids = [c.doc_id for c in result.retrieved]
             rank = first_relevant_rank(retrieved_ids, set(item.expected_doc_ids))
+            section_rank = (
+                first_relevant_rank(
+                    [f"{c.doc_id}:{c.section}" for c in result.retrieved],
+                    {f"{d}:{s}" for d in item.expected_doc_ids for s in item.expected_sections},
+                )
+                if item.expected_sections
+                else None
+            )
             cited_docs = {ref.split("#")[0] for ref in result.cited}
             rows.append(
                 {
                     "id": item.id,
                     "type": item.type,
                     "rank": rank,
+                    "section_rank": section_rank,
+                    "has_expected_sections": bool(item.expected_sections),
+                    "retrieved": [f"{c.ref} (s.{c.section})" for c in result.retrieved],
                     "answer": result.answer,
                     "refused": result.refused,
                     "keywords_ok": (
@@ -70,6 +81,7 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
     answerable = [r for r in rows if r["type"] != "unanswerable"]
     unanswerable = [r for r in rows if r["type"] == "unanswerable"]
     ranks = [r["rank"] for r in answerable]
+    section_ranks = [r["section_rank"] for r in answerable if r["has_expected_sections"]]
     report: dict[str, Any] = {
         "run_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "golden_file": str(golden_path),
@@ -78,6 +90,8 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
             "k": k,
             "embedding_model": settings.embedding_model,
             "embedding_provider": settings.embedding_provider,
+            "chunking_strategy": settings.chunking_strategy,
+            "chunker_version": settings.chunker_version,
             "chunk_size_chars": settings.chunk_size_chars,
             "chunk_overlap_chars": settings.chunk_overlap_chars,
             "llm_model": settings.llm_model or None,
@@ -94,6 +108,16 @@ async def run(golden_path: Path, k: int) -> dict[str, Any]:
         },
         "rows": rows,
     }
+    if section_ranks:
+        # Stricter than hit@k: the right section, not just the right document.
+        report["retrieval"].update(
+            {
+                f"section_hit@{k}": round(hit_at_k(section_ranks, k), 3),
+                "section_hit@1": round(hit_at_k(section_ranks, 1), 3),
+                "section_mrr": round(mean_reciprocal_rank(section_ranks), 3),
+                "section_questions": len(section_ranks),
+            }
+        )
     if llm is not None:
         answered = [r for r in answerable if not r["refused"]]
         with_citation = [r for r in answered if r["has_citation"]]
@@ -120,9 +144,16 @@ def print_summary(report: dict[str, Any]) -> None:
     for section in ("retrieval", "answers", "latency_ms"):
         for name, value in report.get(section, {}).items():
             print(f"| {section}.{name} | {value if value is not None else 'n/a'} |")
-    misses = [r["id"] for r in report["rows"] if r["type"] != "unanswerable" and r["rank"] is None]
+    k = report["config"]["k"]
+    answerable = [r for r in report["rows"] if r["type"] != "unanswerable"]
+    misses = [r["id"] for r in answerable if r["rank"] is None]
     if misses:
-        print(f"\nNot retrieved in top {report['config']['k']}: {', '.join(misses)}")
+        print(f"\nDocument not in top {k}: {', '.join(misses)}")
+    section_misses = [
+        r["id"] for r in answerable if r["has_expected_sections"] and r["section_rank"] is None
+    ]
+    if section_misses:
+        print(f"Section not in top {k}: {', '.join(section_misses)}")
 
 
 def main() -> None:

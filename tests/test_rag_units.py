@@ -74,6 +74,22 @@ def test_golden_file_validation(tmp_path: Path) -> None:
         load_golden(bad)
 
 
+def test_golden_expected_sections(tmp_path: Path) -> None:
+    base = {"question": "q?", "type": "lookup", "expected_doc_ids": ["A"]}
+    path = tmp_path / "g.jsonl"
+    path.write_text(json.dumps({"id": "a", **base, "expected_sections": [16, "17A"]}) + "\n")
+    assert load_golden(path)[0].expected_sections == ["16", "17A"]
+
+    path.write_text(json.dumps({"id": "b", **base, "expected_sections": ["16(2)"]}) + "\n")
+    with pytest.raises(ValueError, match="section numbers only"):
+        load_golden(path)
+
+    unanswerable = {"id": "c", "question": "q?", "type": "unanswerable", "expected_sections": ["1"]}
+    path.write_text(json.dumps(unanswerable) + "\n")
+    with pytest.raises(ValueError, match="expected_sections"):
+        load_golden(path)
+
+
 # ---------- LLM client against a fake HTTP server ----------
 
 
