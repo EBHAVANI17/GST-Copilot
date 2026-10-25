@@ -127,7 +127,9 @@ async def test_llm_client_wraps_http_errors() -> None:
 
 @pytest.fixture
 async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
-    async def fake_search(session: Any, qvec: list[float], k: int) -> list[RetrievedChunk]:
+    async def fake_search(
+        session: Any, qvec: list[float], k: int, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
         return CHUNKS[:k]
 
     async def no_session() -> AsyncIterator[None]:

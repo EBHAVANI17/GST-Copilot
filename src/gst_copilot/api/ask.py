@@ -27,6 +27,9 @@ class Passage(BaseModel):
     source_url: str
     section: str | None
     score: float
+    # Rank in vector / keyword search (1 = best); null = not found by that search.
+    vector_rank: int | None
+    keyword_rank: int | None
     cited: bool
     text: str
 
@@ -71,6 +74,8 @@ async def ask_endpoint(
                 source_url=c.source_url,
                 section=c.section,
                 score=c.score,
+                vector_rank=c.vector_rank,
+                keyword_rank=c.keyword_rank,
                 cited=c.ref in cited,
                 text=c.text,
             )

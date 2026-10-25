@@ -103,3 +103,34 @@ async def test_changing_the_chunker_rechunks_and_stores_sections(
     assert hits[0].section == "16"
     assert hits[0].text.startswith("Section 16. Eligibility and conditions")
     get_settings.cache_clear()
+
+
+async def test_hybrid_search_matches_digits_against_numbers_in_words(
+    session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RETRIEVAL_MODE", "hybrid")
+    get_settings.cache_clear()
+    (tmp_path / "act.txt").write_text(
+        "SYNTHETIC TEST DOCUMENT.\n\n"
+        "5. Registration.—(1) Apply for registration within thirty days.\n\n"
+        "6. Payment to supplier.—(1) Where a buyer fails to pay the supplier within a period "
+        "of one hundred and eighty days, the credit shall be reversed.\n\n"
+        "7. Records.—(1) Keep accounts for seventy-two months.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "manifest.csv").write_text(
+        "doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file\n"
+        "NUM-ACT,act,Numbers Act (synthetic),https://example.invalid/n,2020-01-01,2020-04-01,,"
+        "act.txt\n"
+    )
+    await ingest_manifest(session, EMB, tmp_path / "manifest.csv")
+
+    question = "What if I do not pay within 180 days?"
+    hits = await search(session, EMB.embed_query(question), k=3, query_text=question)
+    assert hits[0].section == "6"
+    assert "one hundred and eighty (180) days" in hits[0].text
+    assert hits[0].keyword_rank == 1, "keyword search must match the digits"
+
+    vector_only = await search(session, EMB.embed_query(question), k=3)
+    assert all(h.keyword_rank is None for h in vector_only)
+    get_settings.cache_clear()

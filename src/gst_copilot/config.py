@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     chunk_size_chars: int = 1200
     chunk_overlap_chars: int = 200
     retrieval_top_k: int = 5
+    # "vector": embeddings only (default). "hybrid": vector + keyword (full-text) search
+    # merged with Reciprocal Rank Fusion. Hybrid lowered section_hit@5 (0.875 -> 0.75) on
+    # the golden set, so it stays opt-in until a reranker is added (see ADR 0005).
+    retrieval_mode: Literal["hybrid", "vector"] = "vector"
+    # How many candidates each search returns before fusion.
+    retrieval_candidates: int = 30
+    # RRF constant: score = sum of 1 / (rrf_k + rank). 60 is the usual default.
+    rrf_k: int = 60
 
     # --- LLM (any OpenAI-compatible API: Ollama, OpenAI, Groq, OpenRouter...) ---
     # Leave llm_base_url empty to run in retrieval-only mode (no generation).
