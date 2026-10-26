@@ -1,7 +1,7 @@
 # 14. An LLM judge for answer quality
 
 Date: 2026-10-26
-Status: Accepted (trust its numbers only after it agrees with hand-graded answers)
+Status: Accepted as an experimental triage tool; its numbers are not reported (see validation)
 
 ## Context
 
@@ -54,3 +54,20 @@ answered), supporting m2-v3 as the default (ADR 0013).
 
 Next: re-validate j2 on the same three, then grow hand grades to ~20 answers and
 report the judge's agreement rate before using its numbers.
+
+## Validation, round 2 (judge j2; the same answers, word for word, as round 1)
+
+| Question | Strict hand grade | j1 | j2 |
+|---|---|---|---|
+| q041 | correct | correct, sound reason | correct, sound reason |
+| q042 | not fully correct (borderline): right rule, but concludes from "sells only within the State" and omits the special category caveat | not correct, for a wrong reason | correct (lenient) |
+| q043 | not correct (self-contradictory) | not correct, wrong law in its reason | not correct, sound reason |
+
+j2 fixed the tag confusion (reasons sound in 2/3), but accepted the right-verdict,
+wrong-reason answer that the judge exists to catch. With qwen2.5:7b, neither j1 nor
+j2 is reliable for subtle legal reasoning; both catch unsupported claims.
+
+Decision: the judge stays an experimental triage tool (it flags answers for human
+review); judge.* numbers are not reported in the README. To trust it: a stronger
+judge model (hosted, via JUDGE_BASE_URL) and about 20 hand-graded answers to
+measure agreement.
