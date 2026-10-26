@@ -6,6 +6,8 @@ One JSON object per line:
  "type": "lookup" | "date" | "multihop" | "unanswerable",
  "expected_doc_ids": ["CGST-ACT-2017"],          # where the answer is (empty if unanswerable)
  "expected_sections": ["16"],                     # optional: section/rule numbers, no sub-section
+                                                  # with several documents, name the document:
+                                                  # ["CGST-ACT-2017:18", "CGST-RULES-2017:40"]
  "expected_keywords": ["registration", "20 lakh"], # words a correct answer must contain
  "notes": "why this question matters"}
 
@@ -35,6 +37,20 @@ class GoldenItem:
     def answerable(self) -> bool:
         return self.type != "unanswerable"
 
+    @property
+    def section_pairs(self) -> set[str]:
+        """Expected (document, section) pairs as "DOC:SECTION" strings.
+
+        "CGST-RULES-2017:40" names one document; a bare "16" applies to every
+        expected document (fine when there is only one)."""
+        pairs: set[str] = set()
+        for s in self.expected_sections:
+            if ":" in s:
+                pairs.add(s)
+            else:
+                pairs.update(f"{d}:{s}" for d in self.expected_doc_ids)
+        return pairs
+
 
 def load_golden(path: Path) -> list[GoldenItem]:
     items: list[GoldenItem] = []
@@ -62,6 +78,17 @@ def load_golden(path: Path) -> list[GoldenItem]:
             raise ValueError(f"line {n}: unanswerable questions must not list expected_doc_ids")
         if not item.answerable and item.expected_sections:
             raise ValueError(f"line {n}: unanswerable questions must not list expected_sections")
+        for s in item.expected_sections:
+            doc = s.split(":", 1)[0] if ":" in s else None
+            if doc is not None and doc not in item.expected_doc_ids:
+                raise ValueError(
+                    f"line {n}: section {s!r} names a document not in expected_doc_ids"
+                )
+        if len(item.expected_doc_ids) > 1 and any(":" not in s for s in item.expected_sections):
+            raise ValueError(
+                f"line {n}: with several expected_doc_ids, write sections as 'DOC:NUMBER', "
+                f"e.g. '{item.expected_doc_ids[0]}:{item.expected_sections[0].split(':')[-1]}'"
+            )
         bad = [s for s in item.expected_sections if "(" in s]
         if bad:
             raise ValueError(f"line {n}: use section numbers only, e.g. '16' not {bad[0]!r}")

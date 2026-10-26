@@ -1,12 +1,9 @@
 """Evaluation metrics. Pure functions, so they are easy to test and trust."""
 
 import math
-import re
 from collections.abc import Sequence
 
-from gst_copilot.ingest.numbers import NUMBER_WORDS
-
-_NUMBER_WORDS = "|".join(NUMBER_WORDS)
+from gst_copilot.ingest.numbers import to_digits
 
 
 def first_relevant_rank(retrieved_doc_ids: Sequence[str], expected: set[str]) -> int | None:
@@ -31,14 +28,10 @@ def mean_reciprocal_rank(ranks: Sequence[int | None]) -> float:
     return sum(1.0 / r for r in ranks if r is not None) / len(ranks)
 
 
-# Indexing writes "one hundred and eighty (180) days" (ingest/numbers.py). Keywords are
-# copied from the official text ("one hundred and eighty days"), so drop the added
-# digits before matching, or the metric punishes our own normalisation.
-_ADDED_DIGITS = re.compile(rf"\b({_NUMBER_WORDS})\s\(\d+\)")
-
-
+# Numbers are compared in digits on both sides: the law says "thirty days", the
+# index says "thirty (30) days", and an answer may say "30 days". All three match.
 def _normalise(text: str) -> str:
-    return " ".join(_ADDED_DIGITS.sub(r"\1", text.lower()).split())
+    return " ".join(to_digits(text.lower()).split())
 
 
 def contains_all(text: str, keywords: Sequence[str]) -> bool:

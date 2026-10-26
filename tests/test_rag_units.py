@@ -194,3 +194,35 @@ async def test_ask_validates_input(client: AsyncClient) -> None:
     client.app.dependency_overrides[get_llm] = lambda: None  # type: ignore[attr-defined]
     assert (await client.post("/ask", json={"question": "?"})).status_code == 422
     assert (await client.post("/ask", json={"question": "ok?", "top_k": 99})).status_code == 422
+
+
+async def test_query_expansion_changes_search_not_the_llm_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gst_copilot.config import get_settings
+
+    seen: dict[str, str] = {}
+
+    async def fake_search(
+        session: Any, qvec: list[float], k: int, query_text: str | None = None
+    ) -> list[RetrievedChunk]:
+        seen["search"] = query_text or ""
+        return CHUNKS[:k]
+
+    class Echo:
+        async def complete(self, messages: list[dict[str, str]]) -> Any:
+            seen["llm"] = messages[1]["content"]
+            from gst_copilot.rag.llm import Completion
+
+            return Completion("ok [SAMPLE-ACT#0]", "m", None, None)
+
+    monkeypatch.setattr(service, "search", fake_search)
+    monkeypatch.setenv("QUERY_EXPANSION", "glossary")
+    monkeypatch.setenv("CONTEXT_EXPANSION", "none")
+    get_settings.cache_clear()
+    try:
+        await service.ask("Can I claim ITC?", None, FakeEmbedder(384), Echo(), 2)  # type: ignore[arg-type]
+    finally:
+        get_settings.cache_clear()
+    assert seen["search"] == "Can I claim ITC (input tax credit)?"
+    assert seen["llm"].endswith("QUESTION:\nCan I claim ITC?")

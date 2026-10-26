@@ -114,6 +114,19 @@ Model choice (ADR 0009): 7B q4 answers best but doesn't fit 6 GB VRAM; 3-bit fit
 
 M2.6: repaired PDF words (ADR 0010); context_recall 1.0, so every expected phrase reaches the LLM. Answer metrics did not improve (within noise on 8 questions): generation with the 3B model is now the only bottleneck (ADR 0009).
 
+### Golden set v2 (30 questions: 25 answerable, 5 unanswerable)
+
+Every keyword checked against the PDFs (`python -m gst_copilot.evals.check`). Retrieval only.
+
+| Version | hit@5 | hit@1 | section_hit@5 | section_hit@1 | section MRR |
+|---|---|---|---|---|---|
+| M2.6 on golden v2 | 0.80 | 0.60 | 0.68 | 0.44 | 0.537 |
+| M2.7 + GST glossary query expansion | 0.92 | 0.76 | 0.76 | 0.52 | 0.613 |
+
+Golden v1 overstated quality: the system had been tuned on its 8 ITC questions (section_hit@5 1.0 on v1, 0.68 on v2). Wider candidate pool and hybrid search gave no gain (ADR 0011). Defaults chosen on v2; a held-out set measures the honest number.
+
+
+
 ## Develop
 
 ```bash

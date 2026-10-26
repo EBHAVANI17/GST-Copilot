@@ -195,3 +195,21 @@ def test_missing_keywords_lists_what_is_absent() -> None:
     assert missing_keywords(text, ["tax invoice", "one hundred and eighty days", "September"]) == [
         "September"
     ]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["within thirty days", "within thirty (30) days", "within 30 days", "within Thirty days"],
+)
+def test_numbers_match_in_words_or_digits(answer: str) -> None:
+    from gst_copilot.evals.metrics import contains_all
+
+    assert contains_all(answer, ["thirty days"])
+
+
+def test_digit_matching_does_not_confuse_different_numbers() -> None:
+    from gst_copilot.evals.metrics import contains_all, keyword_recall
+
+    assert not contains_all("within 60 days", ["thirty days"])
+    assert keyword_recall("useful life of 5 years", ["useful life", "five years"]) == 1.0
+    assert contains_all("180 days from the date", ["one hundred and eighty days"])

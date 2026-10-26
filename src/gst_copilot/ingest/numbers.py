@@ -66,3 +66,15 @@ def annotate_numbers(text: str) -> str:
         return f"{m.group('num')} ({value}){m.group('gap')}"
 
     return _PATTERN.sub(repl, text)
+
+
+_ANNOTATED = re.compile(rf"\b(?:{_NUM})\s\((\d+)\)", re.IGNORECASE)
+
+
+def to_digits(text: str) -> str:
+    """Canonical form for comparing text: every number before a unit, in digits.
+
+    "thirty days", "thirty (30) days" and "30 days" all become "30 days", so an
+    answer that writes digits matches a keyword copied from the law in words.
+    """
+    return _ANNOTATED.sub(r"\1", annotate_numbers(text))
