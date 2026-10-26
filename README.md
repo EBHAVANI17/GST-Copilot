@@ -15,30 +15,35 @@ A date-aware GST compliance assistant for small businesses and their accountants
 |---|---|---|
 | M0 | Skeleton: API, worker, Postgres + pgvector, Redis, migrations, CI/CD | ✅ |
 | M1 | Baseline RAG: ingestion, embeddings, vector search, `/ask`, evaluation harness | ✅ |
-| M2 | Retrieval quality + CI eval gate | |
-| M3 | Observability, cost, latency | |
+| M2 | Retrieval and answer quality, measured by ablations | ✅ |
+| M3 | Observability, cost, latency | ✅ |
 | M4 | ITC reconciliation + invoice checker | |
 | M4b | Return preparation | |
 | M5 | Data freshness + safety | |
 | M6 | Hardening + launch | |
 
+M3 results: [docs/milestones/m3.md](docs/milestones/m3.md)
+
 ## Targets (SLOs)
 
 | Metric | Target | Current |
 |---|---|---|
-| Retrieval hit@5 | ≥ 0.85 | – |
-| Citation accuracy | ≥ 0.95 | – |
-| Correct refusal on unanswerable | ≥ 0.90 | – |
-| p95 latency, Q&A | ≤ 5 s | – |
-| New notification indexed | within 24 h | – |
+| Retrieval section_hit@5 | ≥ 0.85 | 0.786 golden v2, 0.625 held-out |
+| Citation accuracy | ≥ 0.95 | 0.74 (3B model; ADR 0009) |
+| Correct refusal on unanswerable | ≥ 0.90 | 1.0 |
+| Time to first word, Q&A (p95) | ≤ 5 s | 2.5 s (streaming) |
+| Full answer, Q&A (p95) | ≤ 5 s | 7.6 s |
+| New notification indexed | within 24 h | – (M5) |
 
-## Architecture (M1)
+## Architecture
 
 ```
-corpus/manifest.csv ─→ ingest (CLI or worker job): extract → chunk → embed ─→ Postgres + pgvector
-                                                                              (documents, chunks, HNSW index)
-client ─→ FastAPI /ask: embed question → vector search top-k → grounded prompt → LLM → citation check
-              /health, /ready                                                     (any OpenAI-compatible API)
+corpus/manifest.csv ─→ ingest: extract → repair → section chunks → embed ─→ Postgres + pgvector
+client ─→ FastAPI /ask, /ask/stream:
+          glossary expansion → vector search → cross-encoder rerank → whole sections
+          → grounded prompt → LLM (any OpenAI-compatible API) → citation + refusal checks
+          → ask_logs (answers, timings, tokens) ← /feedback
+          /health, /ready (waits for model warm-up)
 ```
 
 Design decisions are recorded in [docs/adr](docs/adr).
@@ -65,72 +70,70 @@ python -m gst_copilot.ingest corpus/manifest.csv
 curl -X POST http://localhost:8000/ask -H "content-type: application/json" \
      -d '{"question": "What does the Act say about registration?"}'
 
-# 3. Evaluate on your golden set
+# 2b. Watch a streamed answer in the terminal
+python -m gst_copilot.client "What are the conditions for taking input tax credit?"
+
+# 3. Evaluate on your golden set; usage report from real questions
 python -m gst_copilot.evals evals/golden.jsonl
+python -m gst_copilot.observe --days 7
 ```
 
 ## Results
 
+### Golden set v1 (10 questions: 8 answerable, 2 unanswerable)
+
 | Version | hit@5 | MRR | Keyword correctness | Citation accuracy | Correct refusal | p95 latency |
 |---|---|---|---|---|---|---|
 | M1 baseline (fixed chunks, vector only) | 0.875 | 0.635 | – | – | – | 58.5 ms (retrieval only) |
-
-
-Golden set: 10 questions (8 answerable, 2 unanswerable), 3 documents. Document-level hit@k; section-level matching comes in M2. Missed: q008 (s.16(3) diluted inside a fixed-size chunk).
-
 | M1 + qwen2.5:3b (Ollama, RTX 4050) | 0.875 | 0.635 | 0.25 | 0.60 | 1.00 | 3.0 s |
 | M1 + qwen2.5:7b (18% on CPU) | 0.875 | 0.635 | 0.25 | 0.80 | 1.00 | 32.3 s |
-
-
-Both models: false refusal 0.25, invalid citation rate 0.10. The 7B model improved citations only, at 10x latency, so the bottleneck is retrieval, not model size. Development stays on 3B; models are compared again after M2.
-
 | M2.1 section chunks + qwen2.5:3b | 0.875 | 0.688 | 0.375 | 0.80 | 1.00 | 4.5 s |
-
-M2.1: section_hit@5 0.875 (8 questions). q008 (s.16(3)) now found; q003 (s.16(2) 180-day proviso) lost. Invalid citations 0.10 → 0.00, false refusals 0.25 → 0.125; answers without citation 0.167 → 0.286.
-
 | M2.2 + numbers in digits, vector (default) | 1.0 | 0.65 | 0.25 | 0.71 | 1.00 | 17.7 s* |
 | M2.2 hybrid RRF (opt-in, not default) | 1.0 | 0.854 | 0.25 | 1.00 | 1.00 | 9.7 s* |
-
-M2.2: section_hit@5 0.875 (vector) vs 0.75 (hybrid). Hybrid ranked documents better but lost the right section for q001/q002, so vector stays the default (ADR 0005). *p95 includes the LLM cold start.
-
-| M2.3 + cross-encoder reranker (MiniLM-L-6, default) | 1.0 | 0.938 | 0.25 | 0.83 | 1.00 | X s |
-
-M2.3: section_hit@5 1.0, section_hit@1 0.875 (was 0.375). Hybrid candidates and bge-reranker-base gave no gain (ADR 0006). Retrieval is no longer the bottleneck: 2 of 8 answerable questions are still refused with the right section retrieved.
-
-| M2.4 prompt m2-v3 + max_tokens (3 runs) | 1.0 | 0.938 | <keyword_recall> | <citation_section_accuracy> | 1.00 | <p95> s |
-
-M2.4: prompt ablation (ADR 0007), one change each on m1-v1: "at most 6 points" (m2-v3) won; section headers hurt. New metrics: keyword_recall, context_recall, citation_section_accuracy, partial_answers; --runs 3 averages LLM noise.
-
-| M2.5 + section expansion (small-to-big, 3 runs) | 1.0 | 0.938 | 0.616 | 0.905 | 1.00 | 12.6 s |
-
-M2.5: context_recall 0.662 → 0.938 (ADR 0008). Retrieval is no longer the bottleneck; generation is. p95 12.6 s breaks the 5 s target: accepted for correctness, latency is the M3 focus.
-
+| M2.3 + cross-encoder reranker (default) | 1.0 | 0.938 | 0.25 | 0.83 | 1.00 | – |
+| M2.5 + section expansion (3 runs) | 1.0 | 0.938 | 0.616 | 0.905 | 1.00 | 12.6 s |
 | M2.5 with qwen2.5:7b q4 (18% CPU) | 1.0 | 0.938 | 0.756 | 0.857 | 1.00 | 49.6 s |
 | M2.5 with qwen2.5:7b q3 (100% GPU) | 1.0 | 0.938 | 0.594 | 0.875 | 1.00 | 24.4 s* |
-
-Model choice (ADR 0009): 7B q4 answers best but doesn't fit 6 GB VRAM; 3-bit fits but loses the gain. Default stays qwen2.5:3b. *includes first-load time.
-
 | M2.6 + PDF text repair (3 runs) | 1.0 | 1.0 | 0.583 | 0.822 | 1.00 | 10.3 s |
 
-M2.6: repaired PDF words (ADR 0010); context_recall 1.0, so every expected phrase reaches the LLM. Answer metrics did not improve (within noise on 8 questions): generation with the 3B model is now the only bottleneck (ADR 0009).
+*includes the LLM's first-load time. From M2.5 the keyword column is keyword_recall and
+the citation column is citation_section_accuracy (stricter: the right section, not only
+the right document).
 
-### Golden set v2 (30 questions: 25 answerable, 5 unanswerable)
+- **M1:** the 7B model improved citations only, at 10x latency: the bottleneck was retrieval, not model size.
+- **M2.1:** section_hit@5 0.875; s.16(3) found, the s.16(2) 180-day proviso lost.
+- **M2.2:** hybrid ranked documents better but lost the right section for q001/q002, so vector stays the default (ADR 0005).
+- **M2.3:** section_hit@1 0.375 → 0.875. Retrieval stopped being the bottleneck (ADR 0006).
+- **M2.4:** prompt ablation, one change at a time; "at most 6 points" (m2-v3) won, section headers hurt (ADR 0007).
+- **M2.5:** context_recall 0.662 → 0.938 (ADR 0008).
+- **Model choice (ADR 0009):** 7B q4 answers best but does not fit 6 GB VRAM; 3-bit fits but loses the gain. Default stays qwen2.5:3b.
+- **M2.6:** context_recall 1.0; answer metrics did not improve, so generation with the 3B model is the bottleneck.
 
-Every keyword checked against the PDFs (`python -m gst_copilot.evals.check`). Retrieval only.
+### Golden set v2 and held-out set (retrieval)
+
+Every keyword checked against the PDFs (`python -m gst_copilot.evals.check`).
 
 | Version | hit@5 | hit@1 | section_hit@5 | section_hit@1 | section MRR |
 |---|---|---|---|---|---|
-| M2.6 on golden v2 | 0.80 | 0.60 | 0.68 | 0.44 | 0.537 |
+| M2.6 on golden v2 (30 questions) | 0.80 | 0.60 | 0.68 | 0.44 | 0.537 |
 | M2.7 + GST glossary query expansion | 0.92 | 0.76 | 0.76 | 0.52 | 0.613 |
-
-Golden v1 overstated quality: the system had been tuned on its 8 ITC questions (section_hit@5 1.0 on v1, 0.68 on v2). Wider candidate pool and hybrid search gave no gain (ADR 0011). Defaults chosen on v2; a held-out set measures the honest number.
-
-
 | M2.7 on held-out set (10 new questions, run once) | 0.625 | 0.50 | 0.625 | 0.375 | 0.463 |
+| M3 on golden v2 + 3 application questions (33) | 0.893 | 0.75 | 0.786 | 0.536 | 0.643 |
 
+Golden v1 overstated quality: the system had been tuned on its 8 ITC questions. Held-out
+answers (3 runs): keyword_recall 0.271, citation_section_accuracy 0.667, correct refusal
+1.0, false refusal 0.125. This is the honest estimate on unseen GST topics.
 
-Held-out answers (3 runs): keyword_recall 0.271, citation_section_accuracy 0.667, correct refusal 1.0, false refusal 0.125, p95 7.0 s. This is the honest estimate on unseen GST topics; golden v1 and v2 overstate quality because defaults were tuned on them.
+### M3: latency and cost (golden v2, 33 questions)
 
+| Change | Before | After | ADR |
+|---|---|---|---|
+| Warm-up at startup | first question 17 s | models loaded before /ready | 0015 |
+| Streaming (`/ask/stream`) | first word with the whole answer (~13 s) | first word while writing | 0016 |
+| Rerank 10 candidates | ttft p50 3.4 s | ttft p50 1.5-2.3 s | 0017 |
+
+Cost (ADR 0018): 2425 prompt + 115 answer tokens per answer. Local model: no per-token
+cost; on GPT-5 mini about 0.84 USD per 1,000 answers.
 
 ## What M2 changed, and how it was measured
 
@@ -152,7 +155,6 @@ a held-out set (8 answerable + 2 unanswerable, run once) gives the honest estima
 section_hit@5 0.625, correct refusal 1.0. Golden keywords are checked against the
 PDFs before every run (python -m gst_copilot.evals.check).
 
-
 ## Develop
 
 ```bash
@@ -171,22 +173,25 @@ EMBEDDING_PROVIDER=fake pytest -m integration  # needs Postgres (docker compose 
 
 ```
 src/gst_copilot/
-  api/main.py        app factory, request-ID + logging middleware
-  api/health.py      /health (liveness) and /ready (readiness)
+  api/main.py        app factory, request-ID + logging middleware, warm-up at startup
+  api/health.py      /health (liveness) and /ready (readiness, waits for warm-up)
+  api/ask.py         POST /ask and POST /ask/stream (server-sent events)
+  api/feedback.py    POST /feedback
   config.py          settings from environment variables
   logging.py         JSON logs with request IDs
-  db/session.py      async SQLAlchemy engine and sessions
-  db/models.py       tables
+  db/                async SQLAlchemy engine, sessions, tables
   worker.py          arq background worker (ping, ingest jobs)
   embeddings.py      Embedder interface: fastembed (local) and fake (tests)
-  ingest/            manifest → extract → chunk → embed → store (idempotent)
-  rag/               retriever (pgvector), prompt, LLM client, ask service
-  api/ask.py         POST /ask
-  evals/             golden set loader, metrics, evaluation CLI
+  ingest/            manifest → extract → repair → section chunks → embed → store
+  rag/               retriever, reranker, glossary, section expansion, prompt, LLM, ask service
+  observe/           ask logs, usage report, tokens and cost
+  evals/             golden sets, metrics, checker, LLM judge, evaluation CLI
+  client.py          terminal client for streamed answers
 corpus/              manifest.csv (committed) and raw/ documents (not committed)
-evals/               golden.jsonl: your test questions
+evals/               golden.jsonl and holdout.jsonl
 migrations/          alembic database migrations
-tests/               unit tests (no external services needed)
+tests/               unit and integration tests
 docs/adr/            architecture decision records
+docs/milestones/     milestone summaries
 .github/workflows/   CI: lint, types, tests, integration, image publish
 ```
