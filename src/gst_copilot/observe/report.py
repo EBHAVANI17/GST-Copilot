@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gst_copilot.db.models import AskLog
 from gst_copilot.evals.metrics import percentile
+from gst_copilot.observe.cost import cost_section, prices_from_settings
 
 PART_OF_GENERATE = {"first_token"}
 
@@ -28,6 +29,7 @@ class UsageReport:
     by_mode: dict[str, int] = field(default_factory=dict)
     rates: dict[str, float | None] = field(default_factory=dict)
     latency_ms: dict[str, dict[str, float]] = field(default_factory=dict)
+    cost: dict[str, Any] = field(default_factory=dict)
     feedback: dict[str, int] = field(default_factory=dict)
     thumbs_down: list[dict[str, Any]] = field(default_factory=list)
     refusals: list[dict[str, Any]] = field(default_factory=list)
@@ -74,6 +76,9 @@ async def build_report(session: AsyncSession, days: float = 7.0, limit: int = 20
         s: {"p50": round(percentile(v, 50), 1), "p95": round(percentile(v, 95), 1)}
         for s, v in stages.items()
     }
+    rep.cost = cost_section(
+        ((r.prompt_tokens, r.completion_tokens) for r in generated), prices_from_settings()
+    )
     rep.feedback = {
         "helpful": sum(1 for r in rows if r.feedback == 1),
         "not_helpful": sum(1 for r in rows if r.feedback == -1),
@@ -103,6 +108,9 @@ def render(rep: UsageReport) -> str:
     lines += [f"| {k} | {'n/a' if v is None else v} |" for k, v in rep.rates.items()]
     lines += ["", "| Stage | p50 ms | p95 ms |", "|---|---|---|"]
     lines += [f"| {s} | {v['p50']} | {v['p95']} |" for s, v in rep.latency_ms.items()]
+    if rep.cost:
+        lines += ["", "| Tokens and cost (generated answers) | Value |", "|---|---|"]
+        lines += [f"| {k} | {v} |" for k, v in rep.cost.items()]
     fb = rep.feedback
     lines += [
         "",
