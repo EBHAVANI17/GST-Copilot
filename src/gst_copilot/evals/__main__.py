@@ -61,7 +61,7 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             section_rank = (
                 first_relevant_rank(
                     [f"{c.doc_id}:{c.section}" for c in result.retrieved],
-                    {f"{d}:{s}" for d in item.expected_doc_ids for s in item.expected_sections},
+                    item.section_pairs,
                 )
                 if item.expected_sections
                 else None
@@ -69,9 +69,7 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             cited_docs = {ref.split("#")[0] for ref in result.cited}
             shown = result.context or result.retrieved  # what the LLM saw
             section_of = {c.ref: f"{c.doc_id}:{c.section}" for c in shown}
-            expected_pairs = {
-                f"{d}:{s}" for d in item.expected_doc_ids for s in item.expected_sections
-            }
+            expected_pairs = item.section_pairs
             context = "\n".join(c.text for c in shown)
             rows.append(
                 {
@@ -143,6 +141,8 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             "chunk_overlap_chars": settings.chunk_overlap_chars,
             "retrieval_mode": settings.retrieval_mode,
             "reranker": reranker.name if reranker else None,
+            "query_expansion": settings.query_expansion,
+            "rerank_candidates": settings.rerank_candidates,
             "context_expansion": settings.context_expansion,
             "context_max_chars": settings.context_max_chars,
             "llm_model": settings.llm_model or None,

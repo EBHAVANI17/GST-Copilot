@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gst_copilot.config import get_settings
 from gst_copilot.embeddings import Embedder
 from gst_copilot.rag.expand import expand
+from gst_copilot.rag.glossary import expand_query
 from gst_copilot.rag.llm import LLMClient
 from gst_copilot.rag.prompt import build_messages, cited_refs, is_partial, is_refusal
 from gst_copilot.rag.rerank import Reranker, rerank
@@ -45,17 +46,19 @@ async def ask(
     reranker: Reranker | None = None,
 ) -> AskResult:
     t0 = time.perf_counter()
-    qvec = embedder.embed_query(question)
+    # Search with the law's wording added; the LLM still gets the original question.
+    query = expand_query(question) if get_settings().query_expansion == "glossary" else question
+    qvec = embedder.embed_query(query)
     t1 = time.perf_counter()
     if reranker is None:
-        chunks = await search(session, qvec, k, query_text=question)
+        chunks = await search(session, qvec, k, query_text=query)
         t2 = time.perf_counter()
         timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
     else:
         n = max(get_settings().rerank_candidates, k)
-        pool = await candidate_pool(session, qvec, question, n)
+        pool = await candidate_pool(session, qvec, query, n)
         tr = time.perf_counter()
-        chunks = rerank(reranker, question, pool, k)
+        chunks = rerank(reranker, query, pool, k)
         t2 = time.perf_counter()
         timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, tr), "rerank": _ms(tr, t2)}
 

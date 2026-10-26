@@ -17,6 +17,15 @@ only, no sub-section like "16(2)"). The report then also shows `section_hit@k`:
 did retrieval find the right **section**, not just the right document. With only a
 few documents, document-level hit@k is easy; section-level is the honest number.
 
+When a question needs two documents, name the document in each entry:
+`"expected_sections": ["CGST-ACT-2017:18", "CGST-RULES-2017:40"]`.
+
+Before running an eval, check every keyword against the real documents:
+
+```
+python -m gst_copilot.evals.check evals/golden.jsonl corpus/manifest.csv
+```
+
 Run:
 
 ```

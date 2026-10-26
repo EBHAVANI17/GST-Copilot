@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     # Candidates per search list given to the reranker (hybrid: up to 2x this).
     rerank_candidates: int = 20
+    # "glossary": add the law's wording to everyday terms in the question before
+    # searching ("ITC" -> "ITC (input tax credit)"), see rag/glossary.py.
+    # Default on: section_hit@5 0.68 -> 0.76 on golden v2 (ADR 0011).
+    query_expansion: Literal["none", "glossary"] = "glossary"
     # What the LLM sees. "none": the top-k ranked pieces. "section": the sections of
     # those pieces, whole and in order (small-to-big), up to context_max_chars.
     # Default "section": context_recall 0.662 -> 0.938 on the golden set (ADR 0008).
