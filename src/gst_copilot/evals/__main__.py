@@ -31,6 +31,7 @@ from gst_copilot.evals.metrics import (
     percentile,
     ratio,
 )
+from gst_copilot.observe.cost import cost_section, prices_from_settings
 from gst_copilot.rag.llm import LLMError, get_judge_llm, get_llm
 from gst_copilot.rag.rerank import get_reranker
 from gst_copilot.rag.service import Answered, AskResult, ask_stream
@@ -109,6 +110,7 @@ async def run(
                     "latency_ms": round(elapsed_ms, 1),
                     "timings_ms": dict(result.timings_ms),
                     "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
                     "answer": result.answer,
                     "answer_chars": len(result.answer or ""),
                     "refused": result.refused,
@@ -205,6 +207,9 @@ async def run(
             "p95": round(percentile(latencies, 95), 1),
             **_stage_latency(rows),
         },
+        "cost": cost_section(
+            ((r["prompt_tokens"], r["completion_tokens"]) for r in rows), prices_from_settings()
+        ),
         "rows": rows,
     }
     if section_ranks:
@@ -297,7 +302,7 @@ def print_summary(report: dict[str, Any]) -> None:
     if runs:
         print(f"Mean of {runs} runs (min-max shown where runs differ)")
     print("| Metric | Value |\n|---|---|")
-    for section in ("retrieval", "answers", "judge", "latency_ms"):
+    for section in ("retrieval", "answers", "judge", "latency_ms", "cost"):
         for name, value in report.get(section, {}).items():
             print(f"| {section}.{name} | {value if value is not None else 'n/a'} |")
     k = report["config"]["k"]
@@ -349,7 +354,7 @@ async def run_many(
 def aggregate(reports: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
     """Mean, min and max of every numeric metric across repeated runs."""
     out: dict[str, dict[str, dict[str, float]]] = {}
-    for section in ("retrieval", "answers", "judge", "latency_ms"):
+    for section in ("retrieval", "answers", "judge", "latency_ms", "cost"):
         names = reports[0].get(section, {})
         for name in names:
             values = [r[section][name] for r in reports if r.get(section, {}).get(name) is not None]

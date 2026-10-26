@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     # > 0 discourages repeating the same words (0 = off). Legal answers repeat terms
     # like "input tax credit" legitimately, so keep it small if you use it.
     llm_frequency_penalty: float = 0.0
+    # Price per million tokens, copied from the provider's official pricing page, for
+    # cost estimates in evals and the usage report (observe/cost.py). 0 = local model:
+    # no per-token bill (the cost is the hardware and electricity instead).
+    llm_price_input_per_mtok: float = 0.0
+    llm_price_output_per_mtok: float = 0.0
+    llm_price_currency: str = "USD"
     # --- LLM judge for evaluation (offline; see evals/judge.py, ADR 0014) ---
     # Empty base URL / key = use the same server as the answering LLM.
     judge_base_url: str = ""
