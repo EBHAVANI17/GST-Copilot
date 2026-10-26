@@ -10,7 +10,11 @@ History (golden set v1, qwen2.5:3b, 3 runs each; see ADR 0007):
   0.125 to 0.625 and the model added "not covered" to most answers. Kept for the
   record; not used.
 - m2-v3, m2-v4, m2-v5: m1-v1 plus exactly ONE change each, so each change can be
-  measured on its own (an ablation).
+  measured on its own (an ablation). m2-v3 won and became the default.
+- m2-v6: m2-v3 plus ONE rule for "application" questions (the user's own facts).
+  Real use (ask_logs) showed false refusals on "my turnover is 15 lakh, do I need
+  to register?": the rule ("exceeds twenty lakh rupees") was in the context, but
+  the model read "does not contain the answer" literally and refused.
 """
 
 import re
@@ -71,6 +75,18 @@ Rules:
 4. Use the law's exact words for conditions, numbers and time limits.
 5. Be concise. This is information, not tax advice."""
 
+# m2-v3 + one rule: apply the rule to the user's own facts.
+_M2_V6 = f"""You are GST Copilot, an assistant for Indian GST law.
+Rules:
+1. Answer ONLY from the CONTEXT passages. Never use outside knowledge.
+2. After every sentence that states a fact, cite its passage tag in square brackets,
+   for example [CGST-ACT-2017#12]. Use only tags that appear in the CONTEXT.
+3. If the CONTEXT does not contain the answer, reply exactly: {REFUSAL}
+4. Answer in at most 6 short points. Do not repeat yourself.
+5. If the question describes the user's own situation, apply the rule from the CONTEXT
+   to it: start with Yes, No or It depends, then give the rule with its citation.
+6. Be concise. This is information, not tax advice."""
+
 PROMPTS: dict[str, Prompt] = {
     "m1-v1": Prompt(_M1_V1),
     "m2-v2": Prompt(_M2_V2, section_headers=True),
@@ -78,6 +94,7 @@ PROMPTS: dict[str, Prompt] = {
     "m2-v4": Prompt(_M2_V4),
     # m1-v1 text, one change: passage headers name the section.
     "m2-v5": Prompt(_M1_V1, section_headers=True),
+    "m2-v6": Prompt(_M2_V6),
 }
 
 _CITATION = re.compile(r"\[([A-Za-z0-9._/\-]+#\d+)\]")

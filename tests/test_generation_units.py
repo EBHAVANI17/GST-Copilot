@@ -213,3 +213,12 @@ def test_digit_matching_does_not_confuse_different_numbers() -> None:
     assert not contains_all("within 60 days", ["thirty days"])
     assert keyword_recall("useful life of 5 years", ["useful life", "five years"]) == 1.0
     assert contains_all("180 days from the date", ["one hundred and eighty days"])
+
+
+def test_m2_v6_is_m2_v3_plus_one_rule() -> None:
+    v3 = set(PROMPTS["m2-v3"].system.splitlines())
+    added = set(PROMPTS["m2-v6"].system.splitlines()) - v3
+    # The new two-line rule 5, plus "Be concise" renumbered 5. -> 6.
+    assert len(added) == 3, added
+    assert any("own situation" in line for line in added)
+    assert REFUSAL in PROMPTS["m2-v6"].system

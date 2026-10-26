@@ -3,7 +3,8 @@
 One JSON object per line:
 {"id": "q001",
  "question": "...",
- "type": "lookup" | "date" | "multihop" | "unanswerable",
+ "type": "lookup" | "date" | "multihop" | "application" | "unanswerable",
+ # application = the user gives their own facts and the rule must be applied to them
  "expected_doc_ids": ["CGST-ACT-2017"],          # where the answer is (empty if unanswerable)
  "expected_sections": ["16"],                     # optional: section/rule numbers, no sub-section
                                                   # with several documents, name the document:
@@ -19,8 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-QuestionType = Literal["lookup", "date", "multihop", "unanswerable"]
-TYPES = {"lookup", "date", "multihop", "unanswerable"}
+QuestionType = Literal["lookup", "date", "multihop", "application", "unanswerable"]
+TYPES = {"lookup", "date", "multihop", "application", "unanswerable"}
 
 
 @dataclass(frozen=True)
@@ -55,7 +56,8 @@ class GoldenItem:
 def load_golden(path: Path) -> list[GoldenItem]:
     items: list[GoldenItem] = []
     ids: set[str] = set()
-    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    # utf-8-sig: also accept files that Windows tools saved with a byte-order mark.
+    for n, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), start=1):
         if not line.strip():
             continue
         raw = json.loads(line)

@@ -86,7 +86,7 @@ class Settings(BaseSettings):
     # like "input tax credit" legitimately, so keep it small if you use it.
     llm_frequency_penalty: float = 0.0
     # Which prompt in rag/prompt.py PROMPTS to use. m2-v3 won the ablation (ADR 0007).
-    prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5"] = "m2-v3"
+    prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5", "m2-v6"] = "m2-v3"
 
     @property
     def chunker_version(self) -> str:
