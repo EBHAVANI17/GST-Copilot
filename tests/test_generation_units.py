@@ -136,7 +136,9 @@ async def test_repeated_runs_share_one_event_loop(monkeypatch: pytest.MonkeyPatc
 
     loops: list[object] = []
 
-    async def fake_run(golden: Path, k: int, retrieval_only: bool) -> dict[str, object]:
+    async def fake_run(
+        golden: Path, k: int, retrieval_only: bool, judge: bool = False
+    ) -> dict[str, object]:
         loops.append(asyncio.get_running_loop())
         return {"retrieval": {}}
 

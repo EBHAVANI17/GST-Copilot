@@ -280,3 +280,15 @@ def test_golden_file_with_windows_bom_loads(tmp_path: Path) -> None:
     p = tmp_path / "g.jsonl"
     p.write_bytes(b"\xef\xbb\xbf" + (json.dumps(row) + "\n").encode())
     assert load_golden(p)[0].id == "b1"
+
+
+def test_golden_reference_answer_is_optional(tmp_path: Path) -> None:
+    rows = [
+        {"id": "r1", "question": "q?", "type": "lookup", "expected_doc_ids": ["A"],
+         "reference_answer": "No, because s.16(2)(b)."},
+        {"id": "r2", "question": "q?", "type": "lookup", "expected_doc_ids": ["A"]},
+    ]  # fmt: skip
+    p = tmp_path / "g.jsonl"
+    p.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    a, b = load_golden(p)
+    assert a.reference_answer.startswith("No") and b.reference_answer == ""

@@ -20,6 +20,7 @@ from gst_copilot.config import get_settings
 from gst_copilot.db.session import get_engine, get_sessionmaker
 from gst_copilot.embeddings import get_embedder
 from gst_copilot.evals.golden import load_golden
+from gst_copilot.evals.judge import JUDGE_VERSION, judge_answer
 from gst_copilot.evals.metrics import (
     contains_all,
     first_relevant_rank,
@@ -30,18 +31,37 @@ from gst_copilot.evals.metrics import (
     percentile,
     ratio,
 )
-from gst_copilot.rag.llm import LLMError, get_llm
+from gst_copilot.rag.llm import LLMError, get_judge_llm, get_llm
 from gst_copilot.rag.rerank import get_reranker
 from gst_copilot.rag.service import ask
 
+JUDGE_MAX_PASSAGES = 4
+JUDGE_MAX_CHARS = 6000
 
-async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[str, Any]:
+
+def _judge_passages(result: Any) -> list[tuple[str, str]]:
+    """(tag, text) of the passages the answer relied on: the cited ones, else all shown."""
+    shown = result.context or result.retrieved
+    cited = set(result.cited)
+    chosen = [(c.ref, c.text) for c in shown if c.ref in cited] or [(c.ref, c.text) for c in shown]
+    out: list[tuple[str, str]] = []
+    for tag, text in chosen[:JUDGE_MAX_PASSAGES]:
+        if sum(len(t) for _, t in out) + len(text) > JUDGE_MAX_CHARS and out:
+            break
+        out.append((tag, text))
+    return out
+
+
+async def run(
+    golden_path: Path, k: int, retrieval_only: bool = False, judge: bool = False
+) -> dict[str, Any]:
     settings = get_settings()
     items = load_golden(golden_path)
     embedder, reranker = get_embedder(), get_reranker()
     llm = None if retrieval_only else get_llm()
     rows: list[dict[str, Any]] = []
     latencies: list[float] = []
+    to_judge: list[tuple[dict[str, Any], Any, Any]] = []  # (row, item, result)
 
     async with get_sessionmaker()() as session:
         for item in items:
@@ -120,8 +140,30 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
                     ),
                     "has_citation": bool(result.cited),
                     "invalid_citations": result.invalid_citations,
+                    "judge": None,
                 }
             )
+            if judge and item.answerable and result.answer and not result.refused:
+                to_judge.append((rows[-1], item, result))
+
+    # Judge after all answers, so the answering model and the (larger) judge model are
+    # not swapped in and out of GPU memory for every question.
+    judge_llm = get_judge_llm() if judge and llm is not None else None
+    if judge_llm is not None:
+        for row, item, result in to_judge:
+            j = await judge_answer(
+                judge_llm,
+                item.question,
+                result.answer,
+                _judge_passages(result),
+                item.reference_answer,
+            )
+            row["judge"] = {
+                "faithful": j.faithful,
+                "correct": j.correct,
+                "explanation": j.explanation,
+                "error": j.error,
+            }
 
     answerable = [r for r in rows if r["type"] != "unanswerable"]
     unanswerable = [r for r in rows if r["type"] == "unanswerable"]
@@ -148,6 +190,7 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             "llm_model": settings.llm_model or None,
             "prompt_version": settings.prompt_version,
             "llm_max_tokens": settings.llm_max_tokens,
+            "judge": ({"model": settings.judge_model, "version": JUDGE_VERSION} if judge else None),
         },
         "retrieval": {
             "context_recall": ratio(sum(r["context_recall"] for r in answerable), len(answerable)),
@@ -196,6 +239,15 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             "truncated_answers": sum(1 for r in rows if r["truncated"]),
             "llm_errors": sum(1 for r in rows if r["llm_error"]),
         }
+        judged = [r for r in answerable if r["judge"] and r["judge"]["error"] is None]
+        if judge:
+            report["judge"] = {
+                # Refusals and unjudged answers count as not correct, like keyword_correctness.
+                "correct": ratio(sum(bool(r["judge"]["correct"]) for r in judged), len(answerable)),
+                "faithful": ratio(sum(bool(r["judge"]["faithful"]) for r in judged), len(judged)),
+                "judged": len(judged),
+                "errors": sum(1 for r in answerable if r["judge"] and r["judge"]["error"]),
+            }
     return report
 
 
@@ -205,7 +257,7 @@ def print_summary(report: dict[str, Any]) -> None:
     if runs:
         print(f"Mean of {runs} runs (min-max shown where runs differ)")
     print("| Metric | Value |\n|---|---|")
-    for section in ("retrieval", "answers", "latency_ms"):
+    for section in ("retrieval", "answers", "judge", "latency_ms"):
         for name, value in report.get(section, {}).items():
             print(f"| {section}.{name} | {value if value is not None else 'n/a'} |")
     k = report["config"]["k"]
@@ -242,12 +294,14 @@ def print_summary(report: dict[str, Any]) -> None:
         )
 
 
-async def run_many(golden: Path, k: int, retrieval_only: bool, runs: int) -> list[dict[str, Any]]:
+async def run_many(
+    golden: Path, k: int, retrieval_only: bool, runs: int, judge: bool = False
+) -> list[dict[str, Any]]:
     """All runs in ONE event loop. The database pool and the LLM's HTTP connections
     belong to the loop that created them; a new asyncio.run() per run would reuse
     connections from a closed loop ("Event loop is closed")."""
     try:
-        return [await run(golden, k, retrieval_only) for _ in range(max(1, runs))]
+        return [await run(golden, k, retrieval_only, judge) for _ in range(max(1, runs))]
     finally:
         await get_engine().dispose()
 
@@ -255,7 +309,7 @@ async def run_many(golden: Path, k: int, retrieval_only: bool, runs: int) -> lis
 def aggregate(reports: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
     """Mean, min and max of every numeric metric across repeated runs."""
     out: dict[str, dict[str, dict[str, float]]] = {}
-    for section in ("retrieval", "answers", "latency_ms"):
+    for section in ("retrieval", "answers", "judge", "latency_ms"):
         names = reports[0].get(section, {})
         for name in names:
             values = [r[section][name] for r in reports if r.get(section, {}).get(name) is not None]
@@ -290,6 +344,11 @@ def main() -> None:
         help="skip the LLM: retrieval metrics only, much faster (for retrieval experiments)",
     )
     parser.add_argument(
+        "--judge",
+        action="store_true",
+        help="grade answers with the judge model (JUDGE_MODEL, default qwen2.5:7b); slow",
+    )
+    parser.add_argument(
         "--runs",
         type=int,
         default=1,
@@ -303,7 +362,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    reports = asyncio.run(run_many(args.golden, args.k, args.retrieval_only, args.runs))
+    reports = asyncio.run(run_many(args.golden, args.k, args.retrieval_only, args.runs, args.judge))
     report = reports[0]
     args.out.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")

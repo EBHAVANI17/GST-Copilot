@@ -81,6 +81,21 @@ class OpenAICompatibleClient:
         )
 
 
+def get_judge_llm() -> LLMClient | None:
+    """The judge model for --judge evaluations; None if no LLM server is configured."""
+    s = get_settings()
+    base = s.judge_base_url or s.llm_base_url
+    if not base or not s.judge_model:
+        return None
+    return OpenAICompatibleClient(
+        base,
+        s.judge_model,
+        s.judge_api_key or s.llm_api_key,
+        s.judge_timeout_seconds,
+        max_tokens=300,
+    )
+
+
 @lru_cache
 def get_llm() -> LLMClient | None:
     """None means no LLM is configured: the API runs in retrieval-only mode."""
