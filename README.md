@@ -110,6 +110,10 @@ M2.5: context_recall 0.662 → 0.938 (ADR 0008). Retrieval is no longer the bott
 
 Model choice (ADR 0009): 7B q4 answers best but doesn't fit 6 GB VRAM; 3-bit fits but loses the gain. Default stays qwen2.5:3b. *includes first-load time.
 
+| M2.6 + PDF text repair (3 runs) | 1.0 | 1.0 | 0.583 | 0.822 | 1.00 | 10.3 s |
+
+M2.6: repaired PDF words (ADR 0010); context_recall 1.0, so every expected phrase reaches the LLM. Answer metrics did not improve (within noise on 8 questions): generation with the 3B model is now the only bottleneck (ADR 0009).
+
 ## Develop
 
 ```bash
