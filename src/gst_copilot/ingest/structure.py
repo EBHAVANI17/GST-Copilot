@@ -16,7 +16,8 @@ Three steps:
    e.g. "Section 16. Eligibility and conditions for taking input tax credit",
    so even a small piece says what it is about.
 
-Numbers written in words get their digits added ("one hundred and eighty (180)
+Words broken by PDF extraction ("o f", "Income -\ntax") are repaired first, see
+repair.py. Numbers written in words get their digits added ("one hundred and eighty (180)
 days"), see numbers.py.
 
 Documents without detectable headings (circulars, notifications) fall back to the
@@ -29,10 +30,11 @@ from dataclasses import dataclass
 
 from gst_copilot.ingest.chunking import chunk_text
 from gst_copilot.ingest.numbers import annotate_numbers
+from gst_copilot.ingest.repair import repair_text
 
 # Bumped whenever the output of this module changes, so the pipeline re-chunks
 # documents that were indexed with an older version.
-STRUCTURE_VERSION = "v2"  # v2: numbers in words also written in digits
+STRUCTURE_VERSION = "v3"  # v2: numbers in digits; v3: repair broken PDF words
 
 
 @dataclass(frozen=True)
@@ -177,6 +179,6 @@ def _pack(body: str, budget: int, overlap: int) -> list[str]:
 
 
 def structured_chunks(text: str, size: int, overlap: int, doc_type: str) -> list[Piece]:
-    """Clean, write numbers in digits, split into sections, then chunk (pipeline entry point)."""
-    clean = annotate_numbers(strip_noise(text))
+    """Repair, clean, write numbers in digits, split into sections, chunk (pipeline entry)."""
+    clean = annotate_numbers(strip_noise(repair_text(text)))
     return chunk_sections(split_sections(clean), size, overlap, doc_type)
