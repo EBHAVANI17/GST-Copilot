@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gst-copilot"
-version = "0.12.0"
+version = "0.13.0"
 description = "Date-aware GST compliance assistant: cited Q&A, ITC reconciliation, invoice checks, return preparation"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.110",
+    "fastapi>=0.118",  # 0.118+: yield dependencies (the DB session) stay open while a response streams
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",

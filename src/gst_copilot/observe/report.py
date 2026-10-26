@@ -2,9 +2,10 @@
 
     python -m gst_copilot.observe --days 7
 
-Shows volume, refusal / partial / invented-citation rates, latency per stage,
-feedback, and the questions worth turning into golden questions: every "not helpful" and
-every refusal (either a corpus gap or a false refusal).
+Shows volume, refusal / partial / invented-citation rates, latency per stage (and
+time to first token for streamed answers), feedback, and the questions worth turning
+into golden questions: every "not helpful" and every refusal (either a corpus gap or
+a false refusal).
 """
 
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gst_copilot.db.models import AskLog
 from gst_copilot.evals.metrics import percentile
+
+PART_OF_GENERATE = {"first_token"}
 
 
 @dataclass
@@ -58,9 +61,15 @@ async def build_report(session: AsyncSession, days: float = 7.0, limit: int = 20
     }
     stages: dict[str, list[float]] = {}
     for r in rows:
-        for stage, ms in (r.timings_ms or {}).items():
-            stages.setdefault(stage, []).append(float(ms))
-        stages.setdefault("total", []).append(sum(float(v) for v in (r.timings_ms or {}).values()))
+        t = {k: float(v) for k, v in (r.timings_ms or {}).items()}
+        for stage, ms in t.items():
+            stages.setdefault(stage, []).append(ms)
+        # first_token is the part of "generate" before the first word, not a stage.
+        total = sum(v for k, v in t.items() if k not in PART_OF_GENERATE)
+        stages.setdefault("total", []).append(total)
+        if "first_token" in t:  # streamed: what the user waited before text appeared
+            ttft = total - t.get("generate", 0.0) + t["first_token"]
+            stages.setdefault("time_to_first_token", []).append(ttft)
     rep.latency_ms = {
         s: {"p50": round(percentile(v, 50), 1), "p95": round(percentile(v, 95), 1)}
         for s, v in stages.items()
