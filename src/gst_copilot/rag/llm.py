@@ -5,9 +5,11 @@ OpenRouter, Together, vLLM, and Ollama at http://localhost:11434/v1), so one
 small client covers them all. Swap providers by changing three env variables.
 """
 
+import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -29,6 +31,14 @@ class Completion:
 
 class LLMClient(Protocol):
     async def complete(self, messages: list[dict[str, str]]) -> Completion: ...
+
+
+@runtime_checkable
+class StreamingLLMClient(LLMClient, Protocol):
+    def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str | Completion]:
+        """Yield text pieces as the model writes them, then one final Completion
+        (full text, finish_reason, token counts)."""
+        ...
 
 
 class LLMError(RuntimeError):
@@ -54,7 +64,7 @@ class OpenAICompatibleClient:
         self._max_tokens = max_tokens
         self._frequency_penalty = frequency_penalty
 
-    async def complete(self, messages: list[dict[str, str]]) -> Completion:
+    def _payload(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
@@ -64,8 +74,11 @@ class OpenAICompatibleClient:
             payload["max_tokens"] = self._max_tokens
         if self._frequency_penalty:
             payload["frequency_penalty"] = self._frequency_penalty
+        return payload
+
+    async def complete(self, messages: list[dict[str, str]]) -> Completion:
         try:
-            r = await self._client.post("/chat/completions", json=payload)
+            r = await self._client.post("/chat/completions", json=self._payload(messages))
             r.raise_for_status()
         except httpx.HTTPError as exc:
             raise LLMError(f"LLM request failed: {type(exc).__name__}") from exc
@@ -78,6 +91,53 @@ class OpenAICompatibleClient:
             model=data.get("model", self._model),
             prompt_tokens=usage.get("prompt_tokens"),
             completion_tokens=usage.get("completion_tokens"),
+        )
+
+    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str | Completion]:
+        """Server-sent events from /chat/completions with "stream": true.
+
+        Each event is a line "data: {json}" with the next piece of text in
+        choices[0].delta.content; "data: [DONE]" ends the stream. include_usage asks
+        for a last event with token counts (Ollama and OpenAI support it).
+        If the caller stops iterating (the user disconnected), leaving the
+        "async with" closes the connection and the server stops generating.
+        """
+        payload = {
+            **self._payload(messages),
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        parts: list[str] = []
+        model, finish = self._model, None
+        usage: dict[str, Any] = {}
+        try:
+            async with self._client.stream("POST", "/chat/completions", json=payload) as r:
+                r.raise_for_status()
+                async for line in r.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue  # blank separators and ": keep-alive" comments
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    event = json.loads(data)
+                    model = event.get("model") or model
+                    usage = event.get("usage") or usage
+                    for choice in event.get("choices") or []:
+                        finish = choice.get("finish_reason") or finish
+                        piece = (choice.get("delta") or {}).get("content")
+                        if piece:
+                            parts.append(piece)
+                            yield piece
+        except httpx.HTTPError as exc:
+            raise LLMError(f"LLM stream failed: {type(exc).__name__}") from exc
+        except json.JSONDecodeError as exc:
+            raise LLMError("LLM stream sent invalid JSON") from exc
+        yield Completion(
+            text="".join(parts),
+            model=model,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            finish_reason=finish,
         )
 
 

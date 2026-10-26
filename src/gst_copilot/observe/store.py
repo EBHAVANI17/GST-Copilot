@@ -60,6 +60,7 @@ def to_row(question: str, result: AskResult, request_id: str | None) -> AskLog:
             "query_expansion": s.query_expansion,
             "context_expansion": s.context_expansion,
             "embedding_model": s.embedding_model,
+            "streamed": result.streamed,
         },
     )
 
