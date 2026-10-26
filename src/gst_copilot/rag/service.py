@@ -24,6 +24,7 @@ class AskResult:
     mode: Literal["generated", "retrieval_only", "no_results"]
     answer: str | None
     retrieved: list[RetrievedChunk]  # top-k as ranked (retrieval metrics use this)
+    search_query: str | None = None  # the question as searched (after glossary expansion)
     context: list[RetrievedChunk] = field(default_factory=list)  # what the LLM was shown
     cited: list[str] = field(default_factory=list)
     invalid_citations: list[str] = field(default_factory=list)
@@ -63,7 +64,9 @@ async def ask(
         timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, tr), "rerank": _ms(tr, t2)}
 
     if not chunks:
-        return AskResult(mode="no_results", answer=None, retrieved=[], timings_ms=timings)
+        return AskResult(
+            mode="no_results", answer=None, retrieved=[], search_query=query, timings_ms=timings
+        )
 
     settings = get_settings()
     context = chunks
@@ -77,6 +80,7 @@ async def ask(
             mode="retrieval_only",
             answer=None,
             retrieved=chunks,
+            search_query=query,
             context=context,
             timings_ms=timings,
         )
@@ -92,6 +96,7 @@ async def ask(
         mode="generated",
         answer=completion.text,
         retrieved=chunks,
+        search_query=query,
         context=context,
         cited=[r for r in refs if r in allowed],
         # A tag the model invented is a red flag: it is citing something it wasn't shown.

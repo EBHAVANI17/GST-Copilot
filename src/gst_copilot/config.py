@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # ~2,200 tokens: leaves room for rules + answer in Ollama's default 4,096 window.
     context_max_chars: int = 8000
 
+    # --- Observability (M3) ---
+    # Store every /ask in the ask_logs table (question, passages, answer, timings).
+    # Questions can contain personal or business details: see ADR 0012 on retention.
+    ask_log_enabled: bool = True
+
     # --- LLM (any OpenAI-compatible API: Ollama, OpenAI, Groq, OpenRouter...) ---
     # Leave llm_base_url empty to run in retrieval-only mode (no generation).
     llm_base_url: str = ""

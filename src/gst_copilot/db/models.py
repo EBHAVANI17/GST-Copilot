@@ -10,6 +10,7 @@ from datetime import date, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    Boolean,
     Computed,
     Date,
     DateTime,
@@ -20,7 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Must match settings.embedding_dim and the VECTOR(n) column in migration 0002.
@@ -73,3 +74,40 @@ class Chunk(Base):
         TSVECTOR, Computed("to_tsvector('english', text)", persisted=True)
     )
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIM))
+
+
+class AskLog(Base):
+    """One row per /ask call: what was asked, what was found, what was answered.
+
+    Used to study real failures (M3): every 👎, refusal or invented citation can be
+    traced to its passages, scores, prompt version and timings, and turned into a
+    new golden question.
+    """
+
+    __tablename__ = "ask_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    question: Mapped[str] = mapped_column(Text)
+    search_query: Mapped[str | None] = mapped_column(Text)  # after glossary expansion
+    mode: Mapped[str] = mapped_column(String(20))
+    answer: Mapped[str | None] = mapped_column(Text)
+    refused: Mapped[bool] = mapped_column(Boolean, default=False)
+    partial: Mapped[bool] = mapped_column(Boolean, default=False)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    cited: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    invalid_citations: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # [{"ref", "section", "score", "vector_rank", "keyword_rank", "rerank_score"}, ...]
+    retrieved: Mapped[list[dict[str, object]]] = mapped_column(JSONB, default=list)
+    context_refs: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    timings_ms: Mapped[dict[str, float]] = mapped_column(JSONB, default=dict)
+    model: Mapped[str | None] = mapped_column(String(100))
+    prompt_version: Mapped[str | None] = mapped_column(String(20))
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    config: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    feedback: Mapped[int | None] = mapped_column(Integer)  # +1 helpful, -1 not helpful
+    feedback_note: Mapped[str | None] = mapped_column(Text)
