@@ -10,6 +10,7 @@ One JSON object per line:
                                                   # with several documents, name the document:
                                                   # ["CGST-ACT-2017:18", "CGST-RULES-2017:40"]
  "expected_keywords": ["registration", "20 lakh"], # words a correct answer must contain
+ "reference_answer": "No: ... because s.16(2)(b) ...",  # optional, for the LLM judge
  "notes": "why this question matters"}
 
 Write each question from the official document itself, never from memory.
@@ -33,6 +34,7 @@ class GoldenItem:
     expected_keywords: list[str] = field(default_factory=list)
     expected_sections: list[str] = field(default_factory=list)
     notes: str = ""
+    reference_answer: str = ""  # short correct answer, written from the law (optional)
 
     @property
     def answerable(self) -> bool:
@@ -69,6 +71,7 @@ def load_golden(path: Path) -> list[GoldenItem]:
             expected_keywords=raw.get("expected_keywords", []),
             expected_sections=[str(s) for s in raw.get("expected_sections", [])],
             notes=raw.get("notes", ""),
+            reference_answer=raw.get("reference_answer", ""),
         )
         if item.type not in TYPES:
             raise ValueError(f"line {n}: type must be one of {sorted(TYPES)}")

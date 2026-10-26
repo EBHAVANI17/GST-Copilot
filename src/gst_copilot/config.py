@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     # > 0 discourages repeating the same words (0 = off). Legal answers repeat terms
     # like "input tax credit" legitimately, so keep it small if you use it.
     llm_frequency_penalty: float = 0.0
+    # --- LLM judge for evaluation (offline; see evals/judge.py, ADR 0014) ---
+    # Empty base URL / key = use the same server as the answering LLM.
+    judge_base_url: str = ""
+    judge_api_key: str = ""
+    judge_model: str = "qwen2.5:7b"
+    judge_timeout_seconds: float = 300.0
     # Which prompt in rag/prompt.py PROMPTS to use. m2-v3 won the ablation (ADR 0007).
     prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5", "m2-v6"] = "m2-v3"
 
