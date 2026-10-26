@@ -192,3 +192,29 @@ async def test_section_expansion_gives_the_llm_whole_sections(
     assert [c.chunk_index for c in result.context if c.section == "16"] == s16
     assert "expand" in result.timings_ms
     get_settings.cache_clear()
+
+
+async def test_ask_log_feedback_and_report(session: AsyncSession) -> None:
+    from gst_copilot.db.models import AskLog
+    from gst_copilot.observe.report import build_report, render
+    from gst_copilot.observe.store import DbAskRecorder, set_feedback
+    from gst_copilot.rag.service import ask
+
+    await session.execute(text("TRUNCATE ask_logs RESTART IDENTITY"))
+    await ingest_manifest(session, EMB, FIXTURES / "manifest.csv")
+    q = "When can a buyer take input credit on widget purchases?"
+    result = await ask(q, session, EMB, None, 2)
+    ask_id = await DbAskRecorder().record(session, q, result, "req-1")
+    assert ask_id is not None
+
+    row = await session.get(AskLog, ask_id)
+    assert row is not None and row.question == q and row.request_id == "req-1"
+    assert row.mode == "retrieval_only" and row.retrieved[0]["ref"]
+    assert "retrieve" in row.timings_ms and row.config["chunker"]
+
+    assert await set_feedback(session, ask_id, -1, "wrong rule")
+    assert not await set_feedback(session, 999_999, 1, None)
+    report = await build_report(session, days=1)
+    assert report.asks == 1 and report.feedback["not_helpful"] == 1
+    assert report.thumbs_down[0]["note"] == "wrong rule"
+    assert "wrong rule" in render(report)

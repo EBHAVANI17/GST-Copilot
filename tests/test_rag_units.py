@@ -17,6 +17,7 @@ from gst_copilot.evals.metrics import (
     mean_reciprocal_rank,
     percentile,
 )
+from gst_copilot.observe.store import get_ask_recorder
 from gst_copilot.rag import service
 from gst_copilot.rag.llm import LLMError, OpenAICompatibleClient, get_llm
 from gst_copilot.rag.prompt import REFUSAL, build_messages, cited_refs, is_refusal
@@ -143,6 +144,7 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     monkeypatch.setattr(service, "candidate_pool", fake_pool)
     app = create_app()
     app.dependency_overrides[get_reranker] = lambda: None
+    app.dependency_overrides[get_ask_recorder] = lambda: None
     app.dependency_overrides[get_session] = no_session
     app.dependency_overrides[get_embedder] = lambda: FakeEmbedder(384)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -226,3 +228,34 @@ async def test_query_expansion_changes_search_not_the_llm_question(
         get_settings.cache_clear()
     assert seen["search"] == "Can I claim ITC (input tax credit)?"
     assert seen["llm"].endswith("QUESTION:\nCan I claim ITC?")
+
+
+async def test_ask_records_the_call_and_returns_ask_id(client: AsyncClient) -> None:
+    recorded: list[tuple[str, str | None, str]] = []
+
+    class FakeRecorder:
+        async def record(
+            self, session: Any, question: str, result: Any, request_id: str | None
+        ) -> int:
+            recorded.append((question, result.search_query, result.mode))
+            return 42
+
+    client.app.dependency_overrides[get_llm] = lambda: None  # type: ignore[attr-defined]
+    client.app.dependency_overrides[get_ask_recorder] = FakeRecorder  # type: ignore[attr-defined]
+    r = await client.post("/ask", json={"question": "When must I register?"})
+    assert r.json()["ask_id"] == 42
+    assert recorded == [("When must I register?", "When must I register?", "retrieval_only")]
+
+
+async def test_a_failing_log_write_does_not_break_the_answer(client: AsyncClient) -> None:
+    from gst_copilot.observe.store import DbAskRecorder
+
+    client.app.dependency_overrides[get_llm] = lambda: None  # type: ignore[attr-defined]
+    client.app.dependency_overrides[get_ask_recorder] = DbAskRecorder  # type: ignore[attr-defined]
+    r = await client.post("/ask", json={"question": "When must I register?"})  # session is None
+    assert r.status_code == 200 and r.json()["ask_id"] is None
+
+
+async def test_feedback_validates_rating(client: AsyncClient) -> None:
+    r = await client.post("/feedback", json={"ask_id": 1, "rating": 5})
+    assert r.status_code == 422

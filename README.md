@@ -132,6 +132,27 @@ Golden v1 overstated quality: the system had been tuned on its 8 ITC questions (
 Held-out answers (3 runs): keyword_recall 0.271, citation_section_accuracy 0.667, correct refusal 1.0, false refusal 0.125, p95 7.0 s. This is the honest estimate on unseen GST topics; golden v1 and v2 overstate quality because defaults were tuned on them.
 
 
+## What M2 changed, and how it was measured
+
+Every change was an ablation (one variable at a time) with an ADR in docs/adr.
+
+| Step | Change | Effect | ADR |
+|---|---|---|---|
+| 1 | Section-aware chunks + noise removal | right section found for s.16(3) | 0004 |
+| 2 | Numbers in digits; hybrid search tried | hybrid lowered section_hit, kept off | 0005 |
+| 3 | Cross-encoder reranker | section_hit@1 0.375 → 0.875 (v1) | 0006 |
+| 4 | Answer limits, prompt ablation | p95 9.3 s → 5.8 s; "≤ 6 points" prompt won | 0007 |
+| 5 | Whole sections to the LLM | context_recall 0.66 → 0.94 | 0008 |
+| 6 | Model comparison on 6 GB GPU | 7B best but 4x slower; 3B default | 0009 |
+| 7 | PDF word repair | context_recall 1.0 (v1) | 0010 |
+| 8 | Golden v2 + glossary query expansion | section_hit@5 0.68 → 0.76 (v2) | 0011 |
+
+Evaluation in three levels: golden v1 (8 questions) and v2 (25) were used for tuning;
+a held-out set (8 answerable + 2 unanswerable, run once) gives the honest estimate:
+section_hit@5 0.625, correct refusal 1.0. Golden keywords are checked against the
+PDFs before every run (python -m gst_copilot.evals.check).
+
+
 ## Develop
 
 ```bash

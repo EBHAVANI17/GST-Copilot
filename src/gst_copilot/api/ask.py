@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gst_copilot.config import get_settings
 from gst_copilot.db.session import get_session
 from gst_copilot.embeddings import Embedder, get_embedder
+from gst_copilot.logging import request_id_var
+from gst_copilot.observe.store import AskRecorder, get_ask_recorder
 from gst_copilot.rag.llm import LLMClient, LLMError, get_llm
 from gst_copilot.rag.rerank import Reranker, get_reranker
 from gst_copilot.rag.service import ask
@@ -37,6 +39,7 @@ class Passage(BaseModel):
 
 
 class AskResponse(BaseModel):
+    ask_id: int | None = None  # send it to POST /feedback; null if logging is off or failed
     mode: Literal["generated", "retrieval_only", "no_results"]
     answer: str | None
     refused: bool
@@ -57,6 +60,7 @@ async def ask_endpoint(
     embedder: Annotated[Embedder, Depends(get_embedder)],
     llm: Annotated[LLMClient | None, Depends(get_llm)],
     reranker: Annotated[Reranker | None, Depends(get_reranker)],
+    recorder: Annotated[AskRecorder | None, Depends(get_ask_recorder)],
 ) -> AskResponse:
     k = body.top_k or get_settings().retrieval_top_k
     try:
@@ -67,7 +71,13 @@ async def ask_endpoint(
             status.HTTP_502_BAD_GATEWAY, "The language model is unavailable."
         ) from exc
     cited = set(result.cited)
+    ask_id = (
+        await recorder.record(session, body.question, result, request_id_var.get())
+        if recorder is not None
+        else None
+    )
     return AskResponse(
+        ask_id=ask_id,
         mode=result.mode,
         answer=result.answer,
         refused=result.refused,
