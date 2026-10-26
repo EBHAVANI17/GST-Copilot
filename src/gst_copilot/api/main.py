@@ -4,10 +4,12 @@ Run locally:   uvicorn gst_copilot.api.main:app --reload
 In Docker:     see Dockerfile and docker-compose.yml
 """
 
+import asyncio
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
@@ -15,6 +17,7 @@ from gst_copilot import __version__
 from gst_copilot.api.ask import router as ask_router
 from gst_copilot.api.feedback import router as feedback_router
 from gst_copilot.api.health import router as health_router
+from gst_copilot.api.warmup import warm_up
 from gst_copilot.config import get_settings
 from gst_copilot.logging import configure_logging, request_id_var
 
@@ -26,7 +29,16 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.log_level)
 
-    app = FastAPI(title="GST Copilot", version=__version__)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Start warm-up in the background: the server accepts /health at once, and
+        # /ready turns green when the models are loaded.
+        task = asyncio.create_task(warm_up()) if settings.warmup_enabled else None
+        yield
+        if task is not None and not task.done():
+            task.cancel()
+
+    app = FastAPI(title="GST Copilot", version=__version__, lifespan=lifespan)
     app.include_router(health_router)
     app.include_router(ask_router)
     app.include_router(feedback_router)

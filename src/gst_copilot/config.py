@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # ~2,200 tokens: leaves room for rules + answer in Ollama's default 4,096 window.
     context_max_chars: int = 8000
 
+    # --- Startup ---
+    # Load embedder, reranker and LLM in the background when the API starts (M3).
+    warmup_enabled: bool = True
+
     # --- Observability (M3) ---
     # Store every /ask in the ask_logs table (question, passages, answer, timings).
     # Questions can contain personal or business details: see ADR 0012 on retention.

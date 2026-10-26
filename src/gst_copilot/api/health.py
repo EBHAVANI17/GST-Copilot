@@ -3,7 +3,8 @@
 /health  = liveness:  "is the process running?"  Never touches dependencies.
                       If it fails, the platform restarts the container.
 /ready   = readiness: "can this instance serve traffic right now?"
-                      Checks Postgres and Redis. If it fails, the platform
+                      Checks Postgres, Redis and that the models are loaded
+                      (warm-up). If it fails, the platform
                       stops sending traffic here but does NOT restart it.
 """
 
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 from redis.asyncio import Redis
 
 from gst_copilot import __version__
+from gst_copilot.api.warmup import models_ready
 from gst_copilot.config import get_settings
 from gst_copilot.db.session import ping_database
 
@@ -52,6 +54,7 @@ async def ping_redis() -> None:
 CHECKS: dict[str, Callable[[], Awaitable[None]]] = {
     "postgres": ping_database,
     "redis": ping_redis,
+    "models": models_ready,  # not ready until warm-up has loaded the models
 }
 
 
