@@ -186,3 +186,12 @@ def test_keyword_normalisation_keeps_subsection_numbers() -> None:
     assert contains_all("under sub-section (2) of section 16", ["sub-section (2)"])
     assert not contains_all("under sub-section (2)", ["sub-section (3)"])
     assert contains_all("thirty (30) days", ["thirty days"])
+
+
+def test_missing_keywords_lists_what_is_absent() -> None:
+    from gst_copilot.evals.metrics import missing_keywords
+
+    text = "tax invoice and one hundred and eighty (180) days"
+    assert missing_keywords(text, ["tax invoice", "one hundred and eighty days", "September"]) == [
+        "September"
+    ]

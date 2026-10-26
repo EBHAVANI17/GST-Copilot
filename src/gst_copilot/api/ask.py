@@ -87,7 +87,7 @@ async def ask_endpoint(
                 cited=c.ref in cited,
                 text=c.text,
             )
-            for c in result.retrieved
+            for c in (result.context or result.retrieved)
         ],
         invalid_citations=result.invalid_citations,
         prompt_version=result.prompt_version,

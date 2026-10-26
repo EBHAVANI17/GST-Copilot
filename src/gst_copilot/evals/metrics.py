@@ -46,6 +46,12 @@ def contains_all(text: str, keywords: Sequence[str]) -> bool:
     return all(_normalise(k) in lowered for k in keywords)
 
 
+def missing_keywords(text: str, keywords: Sequence[str]) -> list[str]:
+    """The expected keywords that do not appear in text (same matching rules)."""
+    lowered = _normalise(text)
+    return [k for k in keywords if _normalise(k) not in lowered]
+
+
 def keyword_recall(text: str, keywords: Sequence[str]) -> float:
     """Share of expected keywords present (1.0 = all). Gentler than contains_all:
     an answer with 4 of 5 key phrases scores 0.8 instead of failing outright."""

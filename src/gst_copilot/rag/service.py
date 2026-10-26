@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gst_copilot.config import get_settings
 from gst_copilot.embeddings import Embedder
+from gst_copilot.rag.expand import expand
 from gst_copilot.rag.llm import LLMClient
 from gst_copilot.rag.prompt import build_messages, cited_refs, is_partial, is_refusal
 from gst_copilot.rag.rerank import Reranker, rerank
@@ -21,7 +22,8 @@ log = logging.getLogger("gst_copilot.rag")
 class AskResult:
     mode: Literal["generated", "retrieval_only", "no_results"]
     answer: str | None
-    retrieved: list[RetrievedChunk]
+    retrieved: list[RetrievedChunk]  # top-k as ranked (retrieval metrics use this)
+    context: list[RetrievedChunk] = field(default_factory=list)  # what the LLM was shown
     cited: list[str] = field(default_factory=list)
     invalid_citations: list[str] = field(default_factory=list)
     refused: bool = False
@@ -59,20 +61,35 @@ async def ask(
 
     if not chunks:
         return AskResult(mode="no_results", answer=None, retrieved=[], timings_ms=timings)
-    if llm is None:
-        return AskResult(mode="retrieval_only", answer=None, retrieved=chunks, timings_ms=timings)
 
-    version = get_settings().prompt_version
-    completion = await llm.complete(build_messages(question, chunks, version))
+    settings = get_settings()
+    context = chunks
+    if settings.context_expansion == "section":
+        context = await expand(session, chunks, qvec, settings.context_max_chars)
+        t2b = time.perf_counter()
+        timings["expand"] = _ms(t2, t2b)
+        t2 = t2b
+    if llm is None:
+        return AskResult(
+            mode="retrieval_only",
+            answer=None,
+            retrieved=chunks,
+            context=context,
+            timings_ms=timings,
+        )
+
+    version = settings.prompt_version
+    completion = await llm.complete(build_messages(question, context, version))
     t3 = time.perf_counter()
     timings["generate"] = _ms(t2, t3)
 
-    allowed = {c.ref for c in chunks}
+    allowed = {c.ref for c in context}
     refs = cited_refs(completion.text)
     result = AskResult(
         mode="generated",
         answer=completion.text,
         retrieved=chunks,
+        context=context,
         cited=[r for r in refs if r in allowed],
         # A tag the model invented is a red flag: it is citing something it wasn't shown.
         invalid_citations=[r for r in refs if r not in allowed],

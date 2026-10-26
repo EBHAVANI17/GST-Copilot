@@ -101,6 +101,10 @@ M2.3: section_hit@5 1.0, section_hit@1 0.875 (was 0.375). Hybrid candidates and 
 
 M2.4: prompt ablation (ADR 0007), one change each on m1-v1: "at most 6 points" (m2-v3) won; section headers hurt. New metrics: keyword_recall, context_recall, citation_section_accuracy, partial_answers; --runs 3 averages LLM noise.
 
+| M2.5 + section expansion (small-to-big, 3 runs) | 1.0 | 0.938 | 0.616 | 0.905 | 1.00 | 12.6 s |
+
+M2.5: context_recall 0.662 → 0.938 (ADR 0008). Retrieval is no longer the bottleneck; generation is. p95 12.6 s breaks the 5 s target: accepted for correctness, latency is the M3 focus.
+
 
 ## Develop
 
