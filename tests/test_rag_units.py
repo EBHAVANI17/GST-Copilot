@@ -259,3 +259,24 @@ async def test_a_failing_log_write_does_not_break_the_answer(client: AsyncClient
 async def test_feedback_validates_rating(client: AsyncClient) -> None:
     r = await client.post("/feedback", json={"ask_id": 1, "rating": 5})
     assert r.status_code == 422
+
+
+def test_golden_accepts_application_questions(tmp_path: Path) -> None:
+    row = {
+        "id": "a1",
+        "question": "My turnover is 15 lakh. Do I need to register?",
+        "type": "application",
+        "expected_doc_ids": ["CGST-ACT-2017"],
+        "expected_sections": ["22"],
+    }
+    p = tmp_path / "g.jsonl"
+    p.write_text(json.dumps(row) + "\n")
+    [item] = load_golden(p)
+    assert item.type == "application" and item.answerable
+
+
+def test_golden_file_with_windows_bom_loads(tmp_path: Path) -> None:
+    row = {"id": "b1", "question": "q?", "type": "unanswerable"}
+    p = tmp_path / "g.jsonl"
+    p.write_bytes(b"\xef\xbb\xbf" + (json.dumps(row) + "\n").encode())
+    assert load_golden(p)[0].id == "b1"
