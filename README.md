@@ -105,6 +105,10 @@ M2.4: prompt ablation (ADR 0007), one change each on m1-v1: "at most 6 points" (
 
 M2.5: context_recall 0.662 → 0.938 (ADR 0008). Retrieval is no longer the bottleneck; generation is. p95 12.6 s breaks the 5 s target: accepted for correctness, latency is the M3 focus.
 
+| M2.5 with qwen2.5:7b q4 (18% CPU) | 1.0 | 0.938 | 0.756 | 0.857 | 1.00 | 49.6 s |
+| M2.5 with qwen2.5:7b q3 (100% GPU) | 1.0 | 0.938 | 0.594 | 0.875 | 1.00 | 24.4 s* |
+
+Model choice (ADR 0009): 7B q4 answers best but doesn't fit 6 GB VRAM; 3-bit fits but loses the gain. Default stays qwen2.5:3b. *includes first-load time.
 
 ## Develop
 
