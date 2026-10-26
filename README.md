@@ -126,6 +126,11 @@ Every keyword checked against the PDFs (`python -m gst_copilot.evals.check`). Re
 Golden v1 overstated quality: the system had been tuned on its 8 ITC questions (section_hit@5 1.0 on v1, 0.68 on v2). Wider candidate pool and hybrid search gave no gain (ADR 0011). Defaults chosen on v2; a held-out set measures the honest number.
 
 
+| M2.7 on held-out set (10 new questions, run once) | 0.625 | 0.50 | 0.625 | 0.375 | 0.463 |
+
+
+Held-out answers (3 runs): keyword_recall 0.271, citation_section_accuracy 0.667, correct refusal 1.0, false refusal 0.125, p95 7.0 s. This is the honest estimate on unseen GST topics; golden v1 and v2 overstate quality because defaults were tuned on them.
+
 
 ## Develop
 
