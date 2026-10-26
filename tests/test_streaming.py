@@ -198,3 +198,26 @@ async def test_report_counts_first_token_inside_generate(no_db: None) -> None:
     rep = await build_report(Session(), days=1)  # type: ignore[arg-type]
     assert rep.latency_ms["total"]["p50"] == 4030.0  # first_token is not added again
     assert rep.latency_ms["time_to_first_token"]["p50"] == 330.0
+
+
+# ---------- evals: latency per stage ----------
+
+
+async def test_eval_answers_through_the_stream_and_reports_stages(no_db: None) -> None:
+    from gst_copilot.evals.__main__ import _answer, _stage_latency
+
+    llm = OpenAICompatibleClient("http://llm/v1", "m", transport=fake_stream(PIECES))
+    result = await _answer("q?", None, FakeEmbedder(384), llm, 2, None)
+    assert result.streamed and "first_token" in result.timings_ms
+
+    rows = [
+        {"timings_ms": {"embed": 10, "rerank": 100, "first_token": 50, "generate": 900},
+         "prompt_tokens": 1000},
+        {"timings_ms": {"embed": 10, "rerank": 300, "first_token": 150, "generate": 2000},
+         "prompt_tokens": 2000},
+        {"timings_ms": {"embed": 10, "rerank": 200}, "prompt_tokens": None},  # retrieval only
+    ]  # fmt: skip
+    out = _stage_latency(rows)
+    assert out["rerank_p50"] == 200 and out["first_token_p50"] == 50
+    assert out["ttft_p50"] == 160 and out["ttft_p95"] == 460  # embed + rerank + first_token
+    assert out["prompt_tokens_mean"] == 1500
