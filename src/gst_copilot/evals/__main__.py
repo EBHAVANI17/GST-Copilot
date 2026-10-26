@@ -33,7 +33,7 @@ from gst_copilot.evals.metrics import (
 )
 from gst_copilot.rag.llm import LLMError, get_judge_llm, get_llm
 from gst_copilot.rag.rerank import get_reranker
-from gst_copilot.rag.service import ask
+from gst_copilot.rag.service import Answered, AskResult, ask_stream
 
 JUDGE_MAX_PASSAGES = 4
 JUDGE_MAX_CHARS = 6000
@@ -68,12 +68,12 @@ async def run(
             t0 = time.perf_counter()
             llm_error = None
             try:
-                result = await ask(item.question, session, embedder, llm, k, reranker)
+                result = await _answer(item.question, session, embedder, llm, k, reranker)
             except LLMError as exc:
                 # One failed LLM call must not lose the whole run: keep the retrieval
                 # result for this question and record the error.
                 llm_error = str(exc)
-                result = await ask(item.question, session, embedder, None, k, reranker)
+                result = await _answer(item.question, session, embedder, None, k, reranker)
             elapsed_ms = (time.perf_counter() - t0) * 1000
             latencies.append(elapsed_ms)
             retrieved_ids = [c.doc_id for c in result.retrieved]
@@ -107,6 +107,8 @@ async def run(
                     "context_chars": len(context),
                     "llm_error": llm_error,
                     "latency_ms": round(elapsed_ms, 1),
+                    "timings_ms": dict(result.timings_ms),
+                    "prompt_tokens": result.prompt_tokens,
                     "answer": result.answer,
                     "answer_chars": len(result.answer or ""),
                     "refused": result.refused,
@@ -201,6 +203,7 @@ async def run(
         "latency_ms": {
             "p50": round(percentile(latencies, 50), 1),
             "p95": round(percentile(latencies, 95), 1),
+            **_stage_latency(rows),
         },
         "rows": rows,
     }
@@ -249,6 +252,43 @@ async def run(
                 "errors": sum(1 for r in answerable if r["judge"] and r["judge"]["error"]),
             }
     return report
+
+
+async def _answer(
+    question: str, session: Any, embedder: Any, llm: Any, k: int, reranker: Any
+) -> AskResult:
+    """Answer through the streaming path, the one users see, so first_token is measured."""
+    async for event in ask_stream(question, session, embedder, llm, k, reranker):
+        if isinstance(event, Answered):
+            return event.result
+    raise RuntimeError("ask_stream ended without a result")
+
+
+# Stages that decide how long the user waits before the first word.
+STAGES = ("rerank", "first_token", "generate")
+
+
+def _stage_latency(rows: list[dict[str, Any]]) -> dict[str, float]:
+    """p50 per stage, p50/p95 time to first token, and mean prompt size in tokens."""
+    out: dict[str, float] = {}
+    for stage in STAGES:
+        values = [r["timings_ms"][stage] for r in rows if stage in r["timings_ms"]]
+        if values:
+            out[f"{stage}_p50"] = round(percentile(values, 50), 1)
+    # Before the first word: every stage except generation, plus first_token.
+    ttft = [
+        sum(v for s, v in r["timings_ms"].items() if s not in ("generate", "first_token"))
+        + r["timings_ms"]["first_token"]
+        for r in rows
+        if "first_token" in r["timings_ms"]
+    ]
+    if ttft:
+        out["ttft_p50"] = round(percentile(ttft, 50), 1)
+        out["ttft_p95"] = round(percentile(ttft, 95), 1)
+    tokens = [r["prompt_tokens"] for r in rows if r["prompt_tokens"] is not None]
+    if tokens:
+        out["prompt_tokens_mean"] = round(sum(tokens) / len(tokens))
+    return out
 
 
 def print_summary(report: dict[str, Any]) -> None:

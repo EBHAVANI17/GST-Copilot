@@ -56,7 +56,8 @@ class Settings(BaseSettings):
     # Small and fast (80 MB). Stronger, slower: BAAI/bge-reranker-base (1 GB).
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     # Candidates per search list given to the reranker (hybrid: up to 2x this).
-    rerank_candidates: int = 20
+    # 10 (was 20): rerank p50 1881 -> 850 ms, same section_hit@5 (ADR 0017).
+    rerank_candidates: int = 10
     # "glossary": add the law's wording to everyday terms in the question before
     # searching ("ITC" -> "ITC (input tax credit)"), see rag/glossary.py.
     # Default on: section_hit@5 0.68 -> 0.76 on golden v2 (ADR 0011).
