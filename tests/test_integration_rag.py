@@ -157,5 +157,38 @@ async def test_reranker_over_a_hybrid_candidate_pool(
     assert result.mode == "retrieval_only"
     assert result.retrieved[0].doc_id == "SAMPLE-RULES"
     assert result.retrieved[0].rerank_score is not None
-    assert set(result.timings_ms) == {"embed", "retrieve", "rerank"}
+    assert {"embed", "retrieve", "rerank"} <= set(result.timings_ms)
+    get_settings.cache_clear()
+
+
+async def test_section_expansion_gives_the_llm_whole_sections(
+    session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gst_copilot.rag.service import ask
+
+    act = Path(__file__).parent / "fixtures" / "widget_act.txt"
+    (tmp_path / "act.txt").write_text(act.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "manifest.csv").write_text(
+        "doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file\n"
+        "WIDGET-ACT,act,Widget Levy Act (synthetic),https://example.invalid/w,"
+        "2020-01-01,2020-04-01,,act.txt\n"
+    )
+    monkeypatch.setenv("CHUNK_SIZE_CHARS", "200")  # split s.16 into several pieces
+    monkeypatch.setenv("CHUNK_OVERLAP_CHARS", "40")
+    get_settings.cache_clear()
+    await ingest_manifest(session, EMB, tmp_path / "manifest.csv")
+    s16 = list(
+        await session.scalars(
+            select(Chunk.chunk_index).where(Chunk.section == "16").order_by(Chunk.chunk_index)
+        )
+    )
+    assert len(s16) >= 2
+
+    q = "claimed depreciation on the levy component"
+    monkeypatch.setenv("CONTEXT_EXPANSION", "section")
+    get_settings.cache_clear()
+    result = await ask(q, session, EMB, None, 1)
+    assert len(result.retrieved) == 1
+    assert [c.chunk_index for c in result.context if c.section == "16"] == s16
+    assert "expand" in result.timings_ms
     get_settings.cache_clear()

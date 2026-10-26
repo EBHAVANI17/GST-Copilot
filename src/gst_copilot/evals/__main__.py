@@ -26,6 +26,7 @@ from gst_copilot.evals.metrics import (
     hit_at_k,
     keyword_recall,
     mean_reciprocal_rank,
+    missing_keywords,
     percentile,
     ratio,
 )
@@ -66,11 +67,12 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
                 else None
             )
             cited_docs = {ref.split("#")[0] for ref in result.cited}
-            section_of = {c.ref: f"{c.doc_id}:{c.section}" for c in result.retrieved}
+            shown = result.context or result.retrieved  # what the LLM saw
+            section_of = {c.ref: f"{c.doc_id}:{c.section}" for c in shown}
             expected_pairs = {
                 f"{d}:{s}" for d in item.expected_doc_ids for s in item.expected_sections
             }
-            context = "\n".join(c.text for c in result.retrieved)
+            context = "\n".join(c.text for c in shown)
             rows.append(
                 {
                     "id": item.id,
@@ -83,6 +85,8 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
                         f", rerank {c.rerank_score})"
                         for c in result.retrieved
                     ],
+                    "context_refs": [c.ref for c in shown],
+                    "context_chars": len(context),
                     "llm_error": llm_error,
                     "latency_ms": round(elapsed_ms, 1),
                     "answer": result.answer,
@@ -110,6 +114,12 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
                     # Are the key phrases in the passages at all? Low = retrieval's fault;
                     # high context_recall but low keyword_recall = generation's fault.
                     "context_recall": keyword_recall(context, item.expected_keywords),
+                    "missing_in_context": missing_keywords(context, item.expected_keywords),
+                    "missing_in_answer": (
+                        missing_keywords(result.answer, item.expected_keywords)
+                        if result.answer is not None
+                        else None
+                    ),
                     "has_citation": bool(result.cited),
                     "invalid_citations": result.invalid_citations,
                 }
@@ -133,6 +143,8 @@ async def run(golden_path: Path, k: int, retrieval_only: bool = False) -> dict[s
             "chunk_overlap_chars": settings.chunk_overlap_chars,
             "retrieval_mode": settings.retrieval_mode,
             "reranker": reranker.name if reranker else None,
+            "context_expansion": settings.context_expansion,
+            "context_max_chars": settings.context_max_chars,
             "llm_model": settings.llm_model or None,
             "prompt_version": settings.prompt_version,
             "llm_max_tokens": settings.llm_max_tokens,
@@ -206,6 +218,22 @@ def print_summary(report: dict[str, Any]) -> None:
     ]
     if section_misses:
         print(f"Section not in top {k}: {', '.join(section_misses)}")
+    gaps = [r for r in answerable if r.get("missing_in_context")]
+    if gaps:
+        print("\nKey phrases missing from the retrieved passages (retrieval or golden set):")
+        for r in gaps:
+            print(f"  {r['id']}: {', '.join(repr(p) for p in r['missing_in_context'])}")
+    answer_gaps = [
+        r
+        for r in answerable
+        if r.get("missing_in_answer")
+        and set(r["missing_in_answer"]) - set(r.get("missing_in_context") or [])
+    ]
+    if answer_gaps:
+        print("In the passages but missing from the answer (generation):")
+        for r in answer_gaps:
+            only = [p for p in r["missing_in_answer"] if p not in r["missing_in_context"]]
+            print(f"  {r['id']}: {', '.join(repr(p) for p in only)}")
     errors = report.get("llm_errors_total", report.get("answers", {}).get("llm_errors", 0))
     if errors:
         print(

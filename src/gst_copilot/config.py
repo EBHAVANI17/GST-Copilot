@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     # Candidates per search list given to the reranker (hybrid: up to 2x this).
     rerank_candidates: int = 20
+    # What the LLM sees. "none": the top-k ranked pieces. "section": the sections of
+    # those pieces, whole and in order (small-to-big), up to context_max_chars.
+    # Default "section": context_recall 0.662 -> 0.938 on the golden set (ADR 0008).
+    context_expansion: Literal["none", "section"] = "section"
+    # ~2,200 tokens: leaves room for rules + answer in Ollama's default 4,096 window.
+    context_max_chars: int = 8000
 
     # --- LLM (any OpenAI-compatible API: Ollama, OpenAI, Groq, OpenRouter...) ---
     # Leave llm_base_url empty to run in retrieval-only mode (no generation).
