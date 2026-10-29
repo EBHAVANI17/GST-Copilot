@@ -13,6 +13,8 @@ amounts, period. The first problem found is the label; all differences are kept 
 `diffs` so nothing is hidden.
 """
 
+import csv
+import io
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -166,3 +168,14 @@ def reconcile(
     results += [Result(b.row_id, None, "missing_in_2b") for b in books_left]
     results += [Result(None, g.row_id, "missing_in_books") for g in twob_left]
     return results
+
+
+def results_csv(results: Iterable[Result]) -> str:
+    """The reconciliation as CSV text: one row per invoice, all differences in details."""
+    out = io.StringIO()
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(["books_id", "gstr2b_id", "label", "details"])
+    for r in results:
+        details = "; ".join(f"{k}: {v}" for k, v in r.diffs.items())
+        w.writerow([r.books_id or "", r.gstr2b_id or "", r.label, details])
+    return out.getvalue()

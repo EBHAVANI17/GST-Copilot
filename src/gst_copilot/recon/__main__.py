@@ -8,24 +8,19 @@ Writes reconciliation.csv next to the inputs (or to --out) and prints a summary.
 """
 
 import argparse
-import csv
+import sys
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 
 from gst_copilot.config import get_settings
 from gst_copilot.recon.csvio import read_expected, read_invoices
-from gst_copilot.recon.matcher import Result, reconcile
+from gst_copilot.recon.matcher import Result, reconcile, results_csv
 from gst_copilot.recon.score import render, score
 
 
 def write_results(path: Path, results: list[Result]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["books_id", "gstr2b_id", "label", "details"])
-        for r in results:
-            details = "; ".join(f"{k}: {v}" for k, v in r.diffs.items())
-            w.writerow([r.books_id or "", r.gstr2b_id or "", r.label, details])
+    path.write_text(results_csv(results), encoding="utf-8", newline="")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,7 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     gstr2b = read_invoices(twob_path, "gstr2b")
     results = reconcile(books, gstr2b, tolerance)
     out = args.out or books_path.parent / "reconciliation.csv"
-    write_results(out, results)
+    try:
+        write_results(out, results)
+    except PermissionError:
+        # Windows: Excel locks a file while it is open.
+        print(f"Cannot write {out}: is it open in Excel? Close it and run again.", file=sys.stderr)
+        return 1
 
     counts = Counter(r.label for r in results)
     print(f"Books: {len(books)} rows, GSTR-2B: {len(gstr2b)} rows, tolerance Rs {tolerance}")
