@@ -1,7 +1,7 @@
 # 20. Reconciliation matcher: ordered rules, one label per invoice, all differences kept
 
 Date: 2026-10-29
-Status: Accepted
+Status: Accepted; rules 3 and 4 amended by ADR 0022 (combined problems)
 
 ## Context
 

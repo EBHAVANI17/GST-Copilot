@@ -85,6 +85,53 @@ def test_planted_problems_look_like_their_label() -> None:
             assert not y.itc_available
 
 
+def test_hard_mode_is_repeatable_and_leaves_easy_data_alone() -> None:
+    assert synth.generate(seed=5, invoices=80, hard=True) == synth.generate(
+        seed=5, invoices=80, hard=True
+    )
+    assert synth.generate(seed=5, invoices=80, hard=False) == synth.generate(seed=5, invoices=80)
+    assert synth.generate(seed=5, invoices=80, hard=True) != synth.generate(seed=5, invoices=80)
+
+
+def test_hard_cases_are_planted_with_one_right_label() -> None:
+    books, gstr2b, expected = synth.generate(seed=2, invoices=300, hard=True)
+    b = {r.row_id: r for r in books}
+    g = {r.row_id: r for r in gstr2b}
+    one = Decimal("1.00")
+    pairs = [(b[e.books_id], g[e.gstr2b_id], e.label) for e in expected
+             if e.books_id and e.gstr2b_id]  # fmt: skip
+    seen: Counter[str] = Counter()
+    for x, y, label in pairs:
+        diff = abs(x.taxable_value - y.taxable_value)
+        renumbered = x.invoice_no != y.invoice_no
+        typo = x.supplier_gstin != y.supplier_gstin
+        if label == "amount_diff" and renumbered:
+            seen["format+amount"] += 1
+        elif label == "amount_diff" and typo:
+            seen["typo+amount"] += 1
+            assert not is_valid(x.supplier_gstin) and diff > one
+        elif label == "period_diff" and typo:
+            seen["typo+period"] += 1
+        elif label == "matched" and diff == one:
+            seen["boundary_1.00"] += 1
+        elif label == "amount_diff" and diff == Decimal("1.01"):
+            seen["boundary_1.01"] += 1
+    # Twin suppliers: same number, date and amounts, both GSTINs valid, never paired.
+    left_b = [b[e.books_id] for e in expected if e.label == "missing_in_2b" and e.books_id]
+    for e in expected:
+        if e.label != "missing_in_books":
+            continue
+        y = g[e.gstr2b_id or ""]
+        twins = [x for x in left_b if x.invoice_no == y.invoice_no]
+        for x in twins:
+            assert is_valid(x.supplier_gstin) and is_valid(y.supplier_gstin)
+            assert sum(p != q for p, q in zip(x.supplier_gstin, y.supplier_gstin, strict=True)) >= 2
+            assert (x.invoice_date, x.taxable_value) == (y.invoice_date, y.taxable_value)
+            seen["twin_suppliers"] += 1
+    for kind, share in synth.HARD_MIX.items():
+        assert seen[kind] == round(share * 300), kind
+
+
 def test_csv_round_trip(tmp_path: Path) -> None:
     books, gstr2b, expected = synth.generate(seed=4, invoices=40)
     write_invoices(tmp_path / "b.csv", books, "books")

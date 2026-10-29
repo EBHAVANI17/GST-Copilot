@@ -10,6 +10,10 @@ statement of which rate applies to which goods.
 
 The same seed always gives the same files, so a matcher can be scored against
 expected.csv exactly (precision and recall per label, M4.2).
+
+--hard (M4.4, ADR 0022) adds cases the easy mix never has: two problems on one
+invoice, invoices of two different suppliers that look alike, and amounts exactly
+at the tolerance. The easy data of a seed does not change.
 """
 
 import argparse
@@ -19,6 +23,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import cast
 
 from gst_copilot.recon.csvio import write_expected, write_invoices
 from gst_copilot.recon.gstin import ALPHABET, check_char
@@ -42,6 +47,26 @@ MIX: dict[Label, float] = {
     "tax_type": 0.04,
     "itc_unavailable": 0.03,
     "duplicate_in_books": 0.03,
+}
+
+# --hard only: planted case -> the one right label (ADR 0022). A pair gets the label of
+# its most serious problem, in the matcher's check order (ITC, tax type, amount,
+# period); a number or GSTIN written wrongly only matters when nothing else is wrong.
+HARD: dict[str, Label] = {
+    "format+amount": "amount_diff",
+    "typo+amount": "amount_diff",
+    "typo+period": "period_diff",
+    "twin_suppliers": "missing_in_2b",  # and missing_in_books: two different suppliers
+    "boundary_1.00": "matched",  # exactly at the tolerance: inclusive
+    "boundary_1.01": "amount_diff",  # one paisa over
+}
+HARD_MIX: dict[str, float] = {
+    "format+amount": 0.05,
+    "typo+amount": 0.05,
+    "typo+period": 0.05,
+    "twin_suppliers": 0.05,
+    "boundary_1.00": 0.03,
+    "boundary_1.01": 0.03,
 }
 
 
@@ -70,6 +95,14 @@ def gstin_typo(rng: random.Random, gstin: str) -> str:
     return gstin[:i] + new + gstin[i + 1 :]
 
 
+def other_supplier(rng: random.Random, gstin: str) -> str:
+    """A different supplier in the same state: GSTIN at least 2 characters apart."""
+    while True:
+        other = fake_gstin(rng, gstin[:2])
+        if sum(x != y for x, y in zip(other, gstin, strict=True)) >= 2:
+            return other
+
+
 def reformat_invoice_no(rng: random.Random, no: str) -> str:
     """The same number written differently: separator, case, leading zeros."""
     prefix, year, seq = no.split("/")
@@ -90,8 +123,18 @@ def _taxes(taxable: Decimal, rate: Decimal, inter_state: bool) -> tuple[Decimal,
     return ZERO, half, tax - half
 
 
+def _with_taxable(inv: Invoice, taxable: Decimal, rate: Decimal) -> Invoice:
+    """The same invoice with another taxable value and its tax at the same rate."""
+    igst, cgst, sgst = _taxes(taxable, rate, inv.igst > 0)
+    return replace(inv, taxable_value=taxable, igst=igst, cgst=cgst, sgst=sgst)
+
+
 def generate(
-    seed: int = 1, invoices: int = 200, period: str = "2026-04", suppliers: int = 25
+    seed: int = 1,
+    invoices: int = 200,
+    period: str = "2026-04",
+    suppliers: int = 25,
+    hard: bool = False,
 ) -> tuple[list[Invoice], list[Invoice], list[Expected]]:
     rng = random.Random(seed)  # noqa: S311 - repeatable test data, not security
     year, month = (int(p) for p in period.split("-"))
@@ -104,11 +147,12 @@ def generate(
         name = f"{rng.choice(WORDS)} {rng.choice(KINDS)} (synthetic {i + 1})"
         vendors.append((fake_gstin(rng, state), name, f"{rng.choice(ALPHABET[10:])}{i:02d}"))
 
-    labels: list[Label] = []
-    for label, share in MIX.items():
-        labels += [label] * round(share * invoices)
-    labels += ["matched"] * (invoices - len(labels))
-    rng.shuffle(labels)
+    # What to plant on each invoice: a label (easy) or a HARD case.
+    kinds: list[str] = []
+    for kind, share in (MIX | HARD_MIX if hard else MIX).items():
+        kinds += [kind] * round(share * invoices)
+    kinds += ["matched"] * (invoices - len(kinds))
+    rng.shuffle(kinds)
 
     books: list[Invoice] = []
     gstr2b: list[Invoice] = []
@@ -119,7 +163,8 @@ def generate(
         rows.append(replace(inv, row_id=row_id, source="books" if prefix == "R" else "gstr2b"))
         return row_id
 
-    for n, label in enumerate(labels, start=1):
+    for n, kind in enumerate(kinds, start=1):
+        label = HARD.get(kind) or cast(Label, kind)
         gstin, name, code = rng.choice(vendors)
         inter = gstin[:2] != BUYER_STATE
         taxable = _money(Decimal(rng.randint(1_000_00, 5_00_000_00)) / 100)
@@ -140,30 +185,50 @@ def generate(
         )
         twob = replace(base, source="gstr2b")
 
-        if label == "matched" and rng.random() < 0.2:
+        cut = _money(base.taxable_value * Decimal("0.9"))  # a wrong amount, same rate
+
+        if kind == "matched" and rng.random() < 0.2:
             # Rounding noise within the tolerance still counts as matched.
             twob = replace(twob, taxable_value=twob.taxable_value + Decimal("0.40"))
-        elif label == "amount_diff":
-            cut = _money(base.taxable_value * Decimal("0.9"))
-            ig, cg, sg = _taxes(cut, rate, inter)
-            twob = replace(twob, taxable_value=cut, igst=ig, cgst=cg, sgst=sg)
-        elif label == "invoice_no_format":
+        elif kind == "amount_diff":
+            twob = _with_taxable(twob, cut, rate)
+        elif kind == "invoice_no_format":
             twob = replace(twob, invoice_no=reformat_invoice_no(rng, base.invoice_no))
-        elif label == "period_diff":
+        elif kind == "period_diff":
             twob = replace(twob, period=next_period)
-        elif label == "gstin_typo":
+        elif kind == "gstin_typo":
             base = replace(base, supplier_gstin=gstin_typo(rng, gstin))
-        elif label == "tax_type":
+        elif kind == "format+amount":
+            twob = _with_taxable(twob, cut, rate)
+            twob = replace(twob, invoice_no=reformat_invoice_no(rng, base.invoice_no))
+        elif kind == "typo+amount":
+            base = replace(base, supplier_gstin=gstin_typo(rng, gstin))
+            twob = _with_taxable(twob, cut, rate)
+        elif kind == "typo+period":
+            base = replace(base, supplier_gstin=gstin_typo(rng, gstin))
+            twob = replace(twob, period=next_period)
+        elif kind == "twin_suppliers":
+            # Same number, date and amounts, but another supplier's invoice.
+            twob = replace(twob, supplier_gstin=other_supplier(rng, gstin),
+                           supplier_name=f"{name} (twin)")  # fmt: skip
+        elif kind == "boundary_1.00":
+            twob = replace(twob, taxable_value=twob.taxable_value + Decimal("1.00"))
+        elif kind == "boundary_1.01":
+            twob = replace(twob, taxable_value=twob.taxable_value + Decimal("1.01"))
+        elif kind == "tax_type":
             tax = base.total_tax
             if inter:  # books wrongly split it as CGST + SGST
                 half = _money(tax / 2)
                 base = replace(base, igst=ZERO, cgst=half, sgst=tax - half)
             else:  # books wrongly booked it as IGST
                 base = replace(base, igst=tax, cgst=ZERO, sgst=ZERO)
-        elif label == "itc_unavailable":
+        elif kind == "itc_unavailable":
             twob = replace(twob, itc_available=False)
 
-        if label == "missing_in_books":
+        if kind == "twin_suppliers":
+            expected.append(Expected(add(books, base, "R"), None, "missing_in_2b"))
+            expected.append(Expected(None, add(gstr2b, twob, "B"), "missing_in_books"))
+        elif label == "missing_in_books":
             expected.append(Expected(None, add(gstr2b, twob, "B"), label))
         elif label == "missing_in_2b":
             expected.append(Expected(add(books, base, "R"), None, label))
@@ -186,8 +251,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--invoices", type=int, default=200)
     p.add_argument("--period", default="2026-04", help="YYYY-MM")
+    p.add_argument("--hard", action="store_true", help="add the hard cases (ADR 0022)")
     args = p.parse_args(argv)
-    books, gstr2b, expected = generate(args.seed, args.invoices, args.period)
+    books, gstr2b, expected = generate(args.seed, args.invoices, args.period, hard=args.hard)
     args.out.mkdir(parents=True, exist_ok=True)
     write_invoices(args.out / "purchase_register.csv", books, "books")
     write_invoices(args.out / "gstr2b.csv", gstr2b, "gstr2b")

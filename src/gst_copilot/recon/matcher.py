@@ -5,12 +5,13 @@ Plain rules in a fixed order; each pass only sees rows no earlier pass used:
 1. duplicates in the books: same supplier, invoice number, date and amounts twice
 2. same supplier GSTIN and the same invoice number, written the same way
 3. same supplier GSTIN, same invoice number written differently ("INV/0042" = "inv-42")
-4. same invoice number, date and amounts, GSTIN one character different (a typo)
+4. same invoice number and date, GSTIN one character different (a typo)
 5. whatever is left: missing in GSTR-2B, or missing in the books
 
 A matched pair is then checked in this order: ITC not available, IGST vs CGST + SGST,
-amounts, period. The first problem found is the label; all differences are kept in
-`diffs` so nothing is hidden.
+amounts, period. The first problem found is the label; a number or GSTIN written
+differently (rules 3 and 4) is the label only when none of these is found (ADR 0022).
+All differences are kept in `diffs` so nothing is hidden.
 """
 
 import csv
@@ -86,13 +87,6 @@ def classify(b: Invoice, g: Invoice, tolerance: Decimal) -> Label:
     return "matched"
 
 
-def _same_amounts(b: Invoice, g: Invoice, tolerance: Decimal) -> bool:
-    return (
-        abs(b.taxable_value - g.taxable_value) <= tolerance
-        and abs(b.total_tax - g.total_tax) <= tolerance
-    )
-
-
 def reconcile(
     books: Iterable[Invoice], gstr2b: Iterable[Invoice], tolerance: Decimal = Decimal("1.00")
 ) -> list[Result]:
@@ -116,7 +110,7 @@ def reconcile(
 
     Key = Callable[[Invoice], object]
 
-    def pair_up(key_b: Key, key_g: Key, label_override: Label | None = None) -> None:
+    def pair_up(key_b: Key, key_g: Key, label_if_matched: Label | None = None) -> None:
         nonlocal books_left, twob_left
         index: dict[object, list[Invoice]] = {}
         for g in twob_left:
@@ -130,7 +124,9 @@ def reconcile(
                 continue
             g = candidates[0]
             used_g.add(g.row_id)
-            label = label_override or classify(b, g, tolerance)
+            label = classify(b, g, tolerance)
+            if label == "matched" and label_if_matched:
+                label = label_if_matched
             results.append(Result(b.row_id, g.row_id, label, _diffs(b, g)))
         books_left = rest
         twob_left = [g for g in twob_left if g.row_id not in used_g]
@@ -143,7 +139,8 @@ def reconcile(
         lambda r: (r.supplier_gstin, invoice_key(r.invoice_no)),
         "invoice_no_format",
     )
-    # 4. GSTIN typo: same number, date and amounts, GSTIN one character off.
+    # 4. GSTIN typo: same number and date, GSTIN one character off. Amounts may differ
+    # (then it is labelled amount_diff); two valid GSTINs are never one character apart.
     rest = []
     for b in books_left:
         match = next(
@@ -152,7 +149,6 @@ def reconcile(
                 for g in twob_left
                 if invoice_key(g.invoice_no) == invoice_key(b.invoice_no)
                 and g.invoice_date == b.invoice_date
-                and _same_amounts(b, g, tolerance)
                 and _one_char_apart(b.supplier_gstin, g.supplier_gstin)
             ),
             None,
@@ -161,7 +157,9 @@ def reconcile(
             rest.append(b)
         else:
             twob_left.remove(match)
-            results.append(Result(b.row_id, match.row_id, "gstin_typo", _diffs(b, match)))
+            label = classify(b, match, tolerance)
+            label = "gstin_typo" if label == "matched" else label
+            results.append(Result(b.row_id, match.row_id, label, _diffs(b, match)))
     books_left = rest
 
     # 5. Left over.
