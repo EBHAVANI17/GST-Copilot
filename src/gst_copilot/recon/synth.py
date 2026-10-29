@@ -81,11 +81,9 @@ def reformat_invoice_no(rng: random.Random, no: str) -> str:
     return f"{prefix} {year} {int(seq):06d}"
 
 
-def _taxes(
-    rng: random.Random, taxable: Decimal, inter_state: bool
-) -> tuple[Decimal, Decimal, Decimal]:
+def _taxes(taxable: Decimal, rate: Decimal, inter_state: bool) -> tuple[Decimal, Decimal, Decimal]:
     """(igst, cgst, sgst): IGST between states, CGST + SGST halves within one state."""
-    tax = _money(taxable * rng.choice(SLABS) / 100)
+    tax = _money(taxable * rate / 100)
     if inter_state:
         return tax, ZERO, ZERO
     half = _money(tax / 2)
@@ -125,7 +123,8 @@ def generate(
         gstin, name, code = rng.choice(vendors)
         inter = gstin[:2] != BUYER_STATE
         taxable = _money(Decimal(rng.randint(1_000_00, 5_00_000_00)) / 100)
-        igst, cgst, sgst = _taxes(rng, taxable, inter)
+        rate = rng.choice(SLABS)  # one rate per invoice, also for its wrong-amount copy
+        igst, cgst, sgst = _taxes(taxable, rate, inter)
         base = Invoice(
             row_id="",
             source="books",
@@ -146,7 +145,7 @@ def generate(
             twob = replace(twob, taxable_value=twob.taxable_value + Decimal("0.40"))
         elif label == "amount_diff":
             cut = _money(base.taxable_value * Decimal("0.9"))
-            ig, cg, sg = _taxes(rng, cut, inter)
+            ig, cg, sg = _taxes(cut, rate, inter)
             twob = replace(twob, taxable_value=cut, igst=ig, cgst=cg, sgst=sg)
         elif label == "invoice_no_format":
             twob = replace(twob, invoice_no=reformat_invoice_no(rng, base.invoice_no))
