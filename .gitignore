@@ -23,3 +23,6 @@ reports/
 .vscode/
 .idea/
 .DS_Store
+
+# Synthetic data: regenerate with python -m gst_copilot.recon.synth (same seed, same files)
+data/synthetic/
