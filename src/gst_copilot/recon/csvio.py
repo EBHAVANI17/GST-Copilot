@@ -5,6 +5,7 @@ A bad row raises ValueError naming the file, line and column.
 """
 
 import csv
+import io
 from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -36,13 +37,17 @@ def write_invoices(path: Path, rows: Iterable[Invoice], source: Source) -> None:
 
 
 def read_invoices(path: Path, source: Source) -> list[Invoice]:
+    return parse_invoices(path.read_text(encoding="utf-8-sig"), source, path.name)
+
+
+def parse_invoices(text: str, source: Source, name: str = "file") -> list[Invoice]:
+    """Rows from CSV text (a file or an upload). name is used in error messages."""
     columns = BOOKS_COLUMNS if source == "books" else GSTR2B_COLUMNS
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        missing = set(columns) - set(reader.fieldnames or [])
-        if missing:
-            raise ValueError(f"{path.name}: missing columns {sorted(missing)}")
-        return [_parse(row, source, path.name, line) for line, row in enumerate(reader, start=2)]
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    missing = set(columns) - set(reader.fieldnames or [])
+    if missing:
+        raise ValueError(f"{name}: missing columns {sorted(missing)}")
+    return [_parse(row, source, name, line) for line, row in enumerate(reader, start=2)]
 
 
 def _parse(row: dict[str, str], source: Source, name: str, line: int) -> Invoice:
