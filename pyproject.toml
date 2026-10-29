@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gst-copilot"
-version = "0.15.0"
+version = "0.16.0"
 description = "Date-aware GST compliance assistant: cited Q&A, ITC reconciliation, invoice checks, return preparation"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,7 @@ dependencies = [
     "fastembed>=0.4",
     "pypdf>=4.0",
     "httpx>=0.27",
+    "python-multipart>=0.0.9",  # file uploads (POST /reconcile)
 ]
 
 [project.optional-dependencies]
