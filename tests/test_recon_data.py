@@ -71,6 +71,8 @@ def test_planted_problems_look_like_their_label() -> None:
             assert abs(x.taxable_value - y.taxable_value) <= one and y.itc_available
         elif e.label == "amount_diff":
             assert abs(x.taxable_value - y.taxable_value) > one
+            # Same rate on both sides: a lower taxable value means a lower tax.
+            assert (x.taxable_value > y.taxable_value) == (x.total_tax > y.total_tax)
         elif e.label == "invoice_no_format":
             assert x.invoice_no != y.invoice_no
         elif e.label == "period_diff":

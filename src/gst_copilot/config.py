@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     # Store every /ask in the ask_logs table (question, passages, answer, timings).
     # Questions can contain personal or business details: see ADR 0012 on retention.
     ask_log_enabled: bool = True
+    # --- ITC reconciliation (M4, ADR 0019) ---
+    # Differences up to this many rupees (taxable value or total tax) are rounding,
+    # not mismatches.
+    recon_tolerance_rupees: float = 1.0
 
     # --- LLM (any OpenAI-compatible API: Ollama, OpenAI, Groq, OpenRouter...) ---
     # Leave llm_base_url empty to run in retrieval-only mode (no generation).

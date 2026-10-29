@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gst-copilot"
-version = "0.14.0"
+version = "0.15.0"
 description = "Date-aware GST compliance assistant: cited Q&A, ITC reconciliation, invoice checks, return preparation"
 requires-python = ">=3.11"
 dependencies = [
@@ -39,6 +39,9 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Our code is in src/: tells every ruff version (CLI and the older pre-commit hook)
+# that gst_copilot is first-party, so they sort imports the same way.
+src = ["src"]
 
 [tool.ruff.lint]
 # E/F: errors, I: import order, B: likely bugs, UP: modern syntax, S: security
