@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     # Store every /ask in the ask_logs table (question, passages, answer, timings).
     # Questions can contain personal or business details: see ADR 0012 on retention.
     ask_log_enabled: bool = True
+
+    # --- Safety (M5, ADR 0025) ---
+    # Longest question /ask accepts, after trimming spaces. Longer ones get 422: a
+    # long question is more room for instructions aimed at the model, and more tokens.
+    ask_max_question_chars: int = 1000
+
     # --- ITC reconciliation (M4, ADR 0019) ---
     # Differences up to this many rupees (taxable value or total tax) are rounding,
     # not mismatches.
