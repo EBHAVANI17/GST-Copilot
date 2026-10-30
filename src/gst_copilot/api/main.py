@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request, Response
 
 from gst_copilot import __version__
 from gst_copilot.api.ask import router as ask_router
+from gst_copilot.api.check_invoice import router as check_invoice_router
 from gst_copilot.api.feedback import router as feedback_router
 from gst_copilot.api.health import router as health_router
 from gst_copilot.api.reconcile import router as reconcile_router
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(ask_router)
     app.include_router(feedback_router)
     app.include_router(reconcile_router)
+    app.include_router(check_invoice_router)
 
     @app.middleware("http")
     async def request_context(
