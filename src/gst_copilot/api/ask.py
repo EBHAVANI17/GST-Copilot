@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gst_copilot.config import get_settings
@@ -29,8 +29,20 @@ LLM_UNAVAILABLE = "The language model is unavailable."
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=3, max_length=1000)
+    question: str = Field(description="3 to ASK_MAX_QUESTION_CHARS (1000) characters")
     top_k: int | None = Field(default=None, ge=1, le=20)
+
+    @field_validator("question")
+    @classmethod
+    def _length(cls, value: str) -> str:
+        # Trim first, so "   " is not a question; the limit is a setting (ADR 0025).
+        value = value.strip()
+        limit = get_settings().ask_max_question_chars
+        if len(value) < 3:
+            raise ValueError("question must have at least 3 characters")
+        if len(value) > limit:
+            raise ValueError(f"question must have at most {limit} characters")
+        return value
 
 
 class Passage(BaseModel):

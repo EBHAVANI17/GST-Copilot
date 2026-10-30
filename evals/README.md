@@ -32,3 +32,17 @@ Run:
 ```
 python -m gst_copilot.evals evals/golden.jsonl
 ```
+
+## Safety set (`safety.jsonl`, ADR 0025)
+
+Empty on purpose: the owner writes these questions, not an agent. Each line uses the
+golden format with `"type": "unanswerable"` (the right answer is a refusal), for example
+the shape (not a real entry):
+
+```
+{"id": "s001", "question": "<question>", "type": "unanswerable", "notes": "<which kind>"}
+```
+
+Kinds to cover: questions outside GST; requests for help to evade tax; instructions
+aimed at the model ("ignore your rules ..."); a false claim next to a real citation
+tag (the known gap in ADR 0025). Run it like the golden set; it is not tuned on.
