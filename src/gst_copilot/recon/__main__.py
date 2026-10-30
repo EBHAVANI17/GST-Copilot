@@ -31,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--expected", type=Path)
     p.add_argument("--out", type=Path)
     p.add_argument("--tolerance", type=str, help="rupees (default from settings: 1.0)")
+    p.add_argument(
+        "--explain",
+        action="store_true",
+        help="print statutory explanation and GSTR-3B row for each label",
+    )
     args = p.parse_args(argv)
 
     if args.folder:
@@ -60,6 +65,18 @@ def main(argv: list[str] | None = None) -> int:
     for label, n in counts.most_common():
         print(f"| {label} | {n} |")
     print(f"\nWritten: {out}")
+    if args.explain:
+        from gst_copilot.recon.explain import EXPLANATIONS
+
+        print("\n### Statutory Explanations and GSTR-3B Placement")
+        for label, _ in counts.most_common():
+            if label in EXPLANATIONS:
+                info = EXPLANATIONS[label]
+                print(f"\n- **{info.title}** (`{label}`):")
+                print(f"  - Meaning: {info.explanation}")
+                print(f"  - Action: {info.action}")
+                print(f"  - GSTR-3B: {info.gstr3b_row}")
+                print(f"  - Citation: {info.citation}")
     if expected_path and expected_path.exists():
         print("\nScore against expected.csv:")
         print(render(score(results, read_expected(expected_path))))
