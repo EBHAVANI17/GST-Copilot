@@ -11,10 +11,11 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from gst_copilot.config import get_settings
 from gst_copilot.recon.csvio import parse_invoices
+from gst_copilot.recon.explain import EXPLANATIONS
 from gst_copilot.recon.matcher import reconcile, results_csv
 from gst_copilot.recon.models import LABELS, Invoice, Source
 
@@ -35,12 +36,21 @@ class InvoiceResult(BaseModel):
     details: dict[str, str]
 
 
+class ExplanationResponse(BaseModel):
+    title: str
+    explanation: str
+    action: str
+    gstr3b_row: str
+    citation: str
+
+
 class ReconcileResponse(BaseModel):
     tolerance_rupees: str
     books_rows: int
     gstr2b_rows: int
     summary: dict[str, int]  # invoices per label
     tax_by_label: dict[str, str]  # total tax per label (books side; GSTR-2B if only there)
+    explanations: dict[str, ExplanationResponse] = Field(default_factory=dict)
     results: list[InvoiceResult]
     disclaimer: str = "Reconciliation aid, not tax advice. Check results before filing."
 
@@ -111,11 +121,24 @@ async def reconcile_endpoint(
                 details=r.diffs,
             )
         )
+    active_summary = {label: summary[label] for label in LABELS if summary[label]}
+    explanations = {
+        label: ExplanationResponse(
+            title=EXPLANATIONS[label].title,
+            explanation=EXPLANATIONS[label].explanation,
+            action=EXPLANATIONS[label].action,
+            gstr3b_row=EXPLANATIONS[label].gstr3b_row,
+            citation=EXPLANATIONS[label].citation,
+        )
+        for label in active_summary
+        if label in EXPLANATIONS
+    }
     return ReconcileResponse(
         tolerance_rupees=f"{tol:.2f}",
         books_rows=len(books),
         gstr2b_rows=len(twob),
-        summary={label: summary[label] for label in LABELS if summary[label]},
+        summary=active_summary,
         tax_by_label={label: f"{tax[label]:.2f}" for label in LABELS if label in tax},
+        explanations=explanations,
         results=items,
     )

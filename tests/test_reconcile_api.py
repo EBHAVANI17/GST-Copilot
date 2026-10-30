@@ -39,6 +39,9 @@ async def test_json_result_has_a_summary_and_every_invoice(
     assert sum(body["summary"].values()) == len(body["results"]) == len(expected)
     assert body["tolerance_rupees"] == "1.00"
     assert set(body["tax_by_label"]) == set(body["summary"])
+    assert set(body["explanations"]) == set(body["summary"])
+    for exp in body["explanations"].values():
+        assert {"title", "explanation", "action", "gstr3b_row", "citation"} <= set(exp)
     first = body["results"][0]
     assert {"label", "supplier_gstin", "invoice_no", "total_tax", "details"} <= set(first)
 
