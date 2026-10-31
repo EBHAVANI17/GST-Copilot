@@ -11,10 +11,20 @@ from gst_copilot.recon.explain import (
     all_explanations,
     explain_label,
 )
+from gst_copilot.recon.gstr3b import (
+    DraftTable4,
+    Table4Row,
+    TaxBreakdown,
+    compile_table4,
+)
 
 __all__ = [
     "EXPLANATIONS",
     "LabelExplanation",
     "all_explanations",
     "explain_label",
+    "DraftTable4",
+    "Table4Row",
+    "TaxBreakdown",
+    "compile_table4",
 ]
