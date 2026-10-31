@@ -46,7 +46,20 @@ client ─→ FastAPI /ask, /ask/stream:
           /health, /ready (waits for model warm-up)
 ```
 
-Design decisions are recorded in [docs/adr](docs/adr).
+Design decisions are recorded in [docs/adr](docs/adr). Key architectural choices include:
+
+- **Storage & Infrastructure:** [ADR 0002](docs/adr/0002-postgres-pgvector-as-single-store.md) (Postgres + pgvector as unified operational and vector store), [ADR 0029](docs/adr/0029-m6-hardening-and-launch.md) (QueuePool tuning, security headers, CORS, graceful shutdown).
+- **Ingestion & Text Processing:** [ADR 0004](docs/adr/0004-structure-aware-chunking.md) (Statutory section-boundary chunking), [ADR 0010](docs/adr/0010-pdf-text-repair.md) (Official PDF repair and OCR artifact cleanup).
+- **Retrieval Precision:** [ADR 0005](docs/adr/0005-hybrid-retrieval.md) (Hybrid dense/sparse search), [ADR 0006](docs/adr/0006-cross-encoder-reranker.md) (Cross-encoder reranking), [ADR 0008](docs/adr/0008-section-expansion.md) (Full section context expansion), [ADR 0028](docs/adr/0028-date-aware-retrieval.md) (Date-aware temporal SQL filtering).
+- **Deterministic Core vs Model Role:** [ADR 0019](docs/adr/0019-itc-reconciliation-data.md) (*"Deterministic rules decide; a model only explains"*), [ADR 0020](docs/adr/0020-reconciliation-matcher.md) / [ADR 0022](docs/adr/0022-hard-reconciliation-data.md) (Deterministic 10-category reconciliation engine), [ADR 0023](docs/adr/0023-invoice-checker.md) (Format, Mod-36 GSTIN checksum, and arithmetic checks), [ADR 0026](docs/adr/0026-reconciliation-explanations.md) (Statutory citations and action guidance), [ADR 0027](docs/adr/0027-draft-gstr3b-table4.md) (Auditable Form GSTR-3B Table 4 return compilation).
+- **Safety, Freshness & Observability:** [ADR 0012](docs/adr/0012-ask-logs-and-feedback.md) (AskLog and feedback tracing), [ADR 0024](docs/adr/0024-notification-watcher.md) (24-hour gazette SLA and `/ready` freshness checks), [ADR 0025](docs/adr/0025-ask-safety.md) (Input boundaries and prompt injection defense).
+
+### Statutory Corpus Coverage
+
+Built on public statutory law:
+- **Acts & Rules:** Central Goods and Services Tax (CGST) Act 2017, Integrated Goods and Services Tax (IGST) Act 2017, and CGST Rules 2017.
+- **Circulars & Notifications:** Key administrative and clarification circulars including Circular No. 170/02/2022-GST (GSTR-3B Table 4 reporting) and Circular No. 193/05/2023-GST.
+- **Temporal Freshness:** Monitored against CBIC gazette releases under ADR 0024. Ingest new notifications or amendments by updating `corpus/manifest.csv` and running `python -m gst_copilot.ingest corpus/manifest.csv`.
 
 ## Run locally
 

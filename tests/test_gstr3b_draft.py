@@ -1,5 +1,6 @@
 """Unit tests for Draft GSTR-3B Table 4 compilation and statutory arithmetic (M4b, ADR 0027)."""
 
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,7 +12,8 @@ from gst_copilot.recon import synth
 from gst_copilot.recon.__main__ import main
 from gst_copilot.recon.csvio import write_invoices
 from gst_copilot.recon.gstr3b import TaxBreakdown, compile_table4
-from gst_copilot.recon.matcher import reconcile
+from gst_copilot.recon.matcher import Result, reconcile
+from gst_copilot.recon.models import Invoice
 
 
 def test_tax_breakdown_arithmetic() -> None:
@@ -148,3 +150,78 @@ async def test_reconcile_api_returns_draft_3b(tmp_path: Path) -> None:
         assert d3b["d1_reclaimed"]["row_key"] == "4(D)(1)"
         assert d3b["d2_ineligible"]["row_key"] == "4(D)(2)"
         assert Decimal(d3b["c_net_itc"]["tax"]["total"]) > Decimal("0")
+
+
+def test_amount_diff_reversals_in_table4_both_directions() -> None:
+    """Verify statutory Table 4 behavior for amount_diff when 2B > books and when 2B < books."""
+    # Case 1: 2B > Books (supplier reported more tax in GSTR-1 than buyer recorded)
+    # Circular 170: Gross 2B enters 4(A)(5), excess reversed in 4(B)(2), net 4(C) = books.
+    b1 = Invoice(
+        row_id="R0001",
+        source="books",
+        supplier_gstin="27AAPFU0939F1ZV",
+        supplier_name="Vendor A",
+        invoice_no="INV-001",
+        invoice_date=date(2026, 4, 10),
+        taxable_value=Decimal("10000.00"),
+        igst=Decimal("1800.00"),
+        cgst=Decimal("0.00"),
+        sgst=Decimal("0.00"),
+        period="2026-04",
+    )
+    g1 = Invoice(
+        row_id="B0001",
+        source="gstr2b",
+        supplier_gstin="27AAPFU0939F1ZV",
+        supplier_name="Vendor A",
+        invoice_no="INV-001",
+        invoice_date=date(2026, 4, 10),
+        taxable_value=Decimal("12000.00"),
+        igst=Decimal("2160.00"),
+        cgst=Decimal("0.00"),
+        sgst=Decimal("0.00"),
+        period="2026-04",
+    )
+    res1 = [Result("R0001", "B0001", "amount_diff")]
+    t4_1 = compile_table4([b1], [g1], res1)
+
+    assert t4_1.a5_all_other_itc.tax.igst == Decimal("2160.00")
+    assert t4_1.b2_temporary_reversals.tax.igst == Decimal("360.00")  # 2160 - 1800
+    assert "R0001:B0001" in t4_1.b2_temporary_reversals.invoice_refs
+    assert t4_1.c_net_itc.tax.igst == Decimal("1800.00")  # Net equals books
+
+    # Case 2: 2B < Books (supplier under-reported tax in GSTR-1)
+    # Circular 170 / s.16(2)(aa): 4(A)(5) capped at 2B, no excess in 2B to reverse in 4(B)(2).
+    b2 = Invoice(
+        row_id="R0002",
+        source="books",
+        supplier_gstin="27AAPFU0939F1ZV",
+        supplier_name="Vendor B",
+        invoice_no="INV-002",
+        invoice_date=date(2026, 4, 10),
+        taxable_value=Decimal("10000.00"),
+        igst=Decimal("1800.00"),
+        cgst=Decimal("0.00"),
+        sgst=Decimal("0.00"),
+        period="2026-04",
+    )
+    g2 = Invoice(
+        row_id="B0002",
+        source="gstr2b",
+        supplier_gstin="27AAPFU0939F1ZV",
+        supplier_name="Vendor B",
+        invoice_no="INV-002",
+        invoice_date=date(2026, 4, 10),
+        taxable_value=Decimal("8000.00"),
+        igst=Decimal("1440.00"),
+        cgst=Decimal("0.00"),
+        sgst=Decimal("0.00"),
+        period="2026-04",
+    )
+    res2 = [Result("R0002", "B0002", "amount_diff")]
+    t4_2 = compile_table4([b2], [g2], res2)
+
+    assert t4_2.a5_all_other_itc.tax.igst == Decimal("1440.00")
+    assert t4_2.b2_temporary_reversals.tax.igst == Decimal("0.00")  # No excess in 2B
+    assert "R0002:B0002" not in t4_2.b2_temporary_reversals.invoice_refs
+    assert t4_2.c_net_itc.tax.igst == Decimal("1440.00")  # Net capped at 2B
