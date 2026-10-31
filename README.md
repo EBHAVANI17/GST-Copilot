@@ -19,10 +19,10 @@ A date-aware GST compliance assistant for small businesses and their accountants
 | M3 | Observability, cost, latency | ✅ |
 | M4 | ITC reconciliation + invoice checker | ✅ |
 | M4b | Return preparation | ✅ |
-| M5 | Data freshness + safety | |
+| M5 | Data freshness + safety | ✅ |
 | M6 | Hardening + launch | |
 
-M3 results: [docs/milestones/m3.md](docs/milestones/m3.md)
+Milestone summaries: [M3](docs/milestones/m3.md), [M4](docs/milestones/m4.md), [M5](docs/milestones/m5.md)
 
 ## Targets (SLOs)
 
