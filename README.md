@@ -20,9 +20,9 @@ A date-aware GST compliance assistant for small businesses and their accountants
 | M4 | ITC reconciliation + invoice checker | ✅ |
 | M4b | Return preparation | ✅ |
 | M5 | Data freshness + safety | ✅ |
-| M6 | Hardening + launch | |
+| M6 | Hardening + launch | ✅ |
 
-Milestone summaries: [M3](docs/milestones/m3.md), [M4](docs/milestones/m4.md), [M5](docs/milestones/m5.md)
+Milestone summaries: [M3](docs/milestones/m3.md), [M4](docs/milestones/m4.md), [M5](docs/milestones/m5.md), [M6](docs/milestones/m6.md)
 
 ## Targets (SLOs)
 

@@ -12,6 +12,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from gst_copilot import __version__
 from gst_copilot.api.ask import router as ask_router
@@ -21,6 +23,7 @@ from gst_copilot.api.health import router as health_router
 from gst_copilot.api.reconcile import router as reconcile_router
 from gst_copilot.api.warmup import warm_up
 from gst_copilot.config import get_settings
+from gst_copilot.db.session import get_engine
 from gst_copilot.logging import configure_logging, request_id_var
 
 log = logging.getLogger("gst_copilot.request")
@@ -39,13 +42,37 @@ def create_app() -> FastAPI:
         yield
         if task is not None and not task.done():
             task.cancel()
+        await get_engine().dispose()
 
     app = FastAPI(title="GST Copilot", version=__version__, lifespan=lifespan)
+
+    # CORS support for frontend clients, accounting portals and sidecars (ADR 0029)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(health_router)
     app.include_router(ask_router)
     app.include_router(feedback_router)
     app.include_router(reconcile_router)
     app.include_router(check_invoice_router)
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        request_id = request_id_var.get()
+        log.exception(
+            "unhandled server exception",
+            extra={"fields": {"request_id": request_id, "path": request.url.path}},
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An internal server error occurred.", "request_id": request_id},
+            headers={"x-request-id": request_id or ""},
+        )
 
     @app.middleware("http")
     async def request_context(
@@ -61,7 +88,13 @@ def create_app() -> FastAPI:
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 1)
             request_id_var.reset(token)
+
+        # Standard production security headers and tracing ID (ADR 0029)
         response.headers["x-request-id"] = request_id
+        response.headers["x-content-type-options"] = "nosniff"
+        response.headers["x-frame-options"] = "DENY"
+        response.headers["referrer-policy"] = "strict-origin-when-cross-origin"
+
         log.info(
             "request",
             extra={
