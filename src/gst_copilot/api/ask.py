@@ -131,7 +131,7 @@ def _build_disclaimer(result: AskResult) -> str:
             titles.append(c.title)
     if not titles:
         return base
-    return f"{base} Law versions used: {'; '.join(titles)}."
+    return f"{base} Law versions used: {'; '.join(titles)}. Law may have changed after these dates."
 
 
 def _passages(result: AskResult) -> list[Passage]:

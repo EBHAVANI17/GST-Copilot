@@ -193,6 +193,7 @@ async def test_ask_disclaimer_includes_law_versions(client: AsyncClient) -> None
     disclaimer = r.json()["disclaimer"]
     assert "Information, not tax advice." in disclaimer
     assert "Law versions used: Act; Rules." in disclaimer
+    assert "Law may have changed after these dates." in disclaimer
 
 
 async def test_ask_returns_502_when_llm_fails(client: AsyncClient) -> None:
