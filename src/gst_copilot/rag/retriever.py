@@ -14,6 +14,7 @@ RRF uses only ranks, so the two very different score scales never need tuning.
 """
 
 from dataclasses import dataclass, replace
+from datetime import date
 from typing import Any
 
 from sqlalchemy import Select, Text, func, select
@@ -43,9 +44,9 @@ class RetrievedChunk:
         return f"{self.doc_id}#{self.chunk_index}"
 
 
-def _base(query_vector: list[float]) -> Select[Any]:
+def _base(query_vector: list[float], as_of: date | None = None) -> Select[Any]:
     distance = Chunk.embedding.cosine_distance(query_vector)
-    return select(
+    stmt = select(
         Chunk.id,
         Document.doc_id,
         Document.title,
@@ -55,6 +56,12 @@ def _base(query_vector: list[float]) -> Select[Any]:
         Chunk.section,
         distance.label("distance"),
     ).join(Document, Document.id == Chunk.document_id)
+    if as_of is not None:
+        stmt = stmt.where(
+            (Document.effective_from.is_(None) | (Document.effective_from <= as_of))
+            & (Document.effective_to.is_(None) | (Document.effective_to >= as_of))
+        )
+    return stmt
 
 
 def _to_chunk(r: Any) -> RetrievedChunk:
@@ -70,15 +77,19 @@ def _to_chunk(r: Any) -> RetrievedChunk:
 
 
 async def vector_search(
-    session: AsyncSession, query_vector: list[float], n: int
+    session: AsyncSession, query_vector: list[float], n: int, as_of: date | None = None
 ) -> dict[int, RetrievedChunk]:
-    stmt = _base(query_vector).order_by("distance").limit(n)
+    stmt = _base(query_vector, as_of=as_of).order_by("distance").limit(n)
     rows = (await session.execute(stmt)).all()
     return {r.id: _to_chunk(r) for r in rows}
 
 
 async def keyword_search(
-    session: AsyncSession, query_vector: list[float], query_text: str, n: int
+    session: AsyncSession,
+    query_vector: list[float],
+    query_text: str,
+    n: int,
+    as_of: date | None = None,
 ) -> dict[int, RetrievedChunk]:
     # plainto_tsquery ANDs every word, which almost never matches a whole question.
     # Turning "&" into "|" means "any of these words"; ts_rank_cd then prefers chunks
@@ -88,7 +99,7 @@ async def keyword_search(
     tsq = func.replace(words, "&", "|").cast(TSQUERY)
     rank = func.ts_rank_cd(Chunk.tsv, tsq)
     stmt = (
-        _base(query_vector)
+        _base(query_vector, as_of=as_of)
         .add_columns(rank.label("kw"))
         .where(Chunk.tsv.op("@@")(tsq))
         .order_by(rank.desc())
@@ -124,25 +135,30 @@ async def search(
     query_vector: list[float],
     k: int,
     query_text: str | None = None,
+    as_of: date | None = None,
 ) -> list[RetrievedChunk]:
     """Top-k chunks. Hybrid when enabled and the question text is given, else vector only."""
     s = get_settings()
     if s.retrieval_mode == "vector" or not query_text:
-        hits = await vector_search(session, query_vector, k)
+        hits = await vector_search(session, query_vector, k, as_of=as_of)
         return [replace(c, vector_rank=i) for i, c in enumerate(hits.values(), start=1)]
     n = max(s.retrieval_candidates, k)
-    vector = await vector_search(session, query_vector, n)
-    keyword = await keyword_search(session, query_vector, query_text, n)
+    vector = await vector_search(session, query_vector, n, as_of=as_of)
+    keyword = await keyword_search(session, query_vector, query_text, n, as_of=as_of)
     return rrf_fuse(vector, keyword, k, s.rrf_k)
 
 
 async def candidate_pool(
-    session: AsyncSession, query_vector: list[float], query_text: str, n: int
+    session: AsyncSession,
+    query_vector: list[float],
+    query_text: str,
+    n: int,
+    as_of: date | None = None,
 ) -> list[RetrievedChunk]:
     """Wide candidate list for a reranker: top n from vector search, plus top n from
     keyword search when RETRIEVAL_MODE=hybrid (duplicates merged, RRF order)."""
-    vector = await vector_search(session, query_vector, n)
+    vector = await vector_search(session, query_vector, n, as_of=as_of)
     if get_settings().retrieval_mode == "vector":
         return [replace(c, vector_rank=i) for i, c in enumerate(vector.values(), start=1)]
-    keyword = await keyword_search(session, query_vector, query_text, n)
+    keyword = await keyword_search(session, query_vector, query_text, n, as_of=as_of)
     return rrf_fuse(vector, keyword, k=2 * n, rrf_k=get_settings().rrf_k)

@@ -8,6 +8,7 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +43,7 @@ class AskResult:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     streamed: bool = False  # answered through POST /ask/stream
+    as_of: date | None = None
 
 
 async def _retrieve(
@@ -50,6 +52,7 @@ async def _retrieve(
     embedder: Embedder,
     k: int,
     reranker: Reranker | None,
+    as_of: date | None = None,
 ) -> tuple[str, list[RetrievedChunk], list[RetrievedChunk], dict[str, float]]:
     """Embed, search, rerank, expand: (search query, top-k, LLM context, timings)."""
     t0 = time.perf_counter()
@@ -59,12 +62,20 @@ async def _retrieve(
     qvec = embedder.embed_query(query)
     t1 = time.perf_counter()
     if reranker is None:
-        chunks = await search(session, qvec, k, query_text=query)
+        chunks = (
+            await search(session, qvec, k, query_text=query, as_of=as_of)
+            if as_of is not None
+            else await search(session, qvec, k, query_text=query)
+        )
         t2 = time.perf_counter()
         timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
     else:
         n = max(settings.rerank_candidates, k)
-        pool = await candidate_pool(session, qvec, query, n)
+        pool = (
+            await candidate_pool(session, qvec, query, n, as_of=as_of)
+            if as_of is not None
+            else await candidate_pool(session, qvec, query, n)
+        )
         tr = time.perf_counter()
         chunks = rerank(reranker, query, pool, k)
         t2 = time.perf_counter()
@@ -82,10 +93,16 @@ def _without_llm(
     chunks: list[RetrievedChunk],
     context: list[RetrievedChunk],
     timings: dict[str, float],
+    as_of: date | None = None,
 ) -> AskResult:
     if not chunks:
         return AskResult(
-            mode="no_results", answer=None, retrieved=[], search_query=query, timings_ms=timings
+            mode="no_results",
+            answer=None,
+            retrieved=[],
+            search_query=query,
+            timings_ms=timings,
+            as_of=as_of,
         )
     return AskResult(
         mode="retrieval_only",
@@ -94,6 +111,7 @@ def _without_llm(
         search_query=query,
         context=context,
         timings_ms=timings,
+        as_of=as_of,
     )
 
 
@@ -105,6 +123,7 @@ def _answered(
     version: str,
     timings: dict[str, float],
     streamed: bool = False,
+    as_of: date | None = None,
 ) -> AskResult:
     allowed = {c.ref for c in context}
     refs = cited_refs(completion.text)
@@ -126,6 +145,7 @@ def _answered(
         prompt_tokens=completion.prompt_tokens,
         completion_tokens=completion.completion_tokens,
         streamed=streamed,
+        as_of=as_of,
     )
     log.info(
         "question answered",
@@ -155,15 +175,18 @@ async def ask(
     llm: LLMClient | None,
     k: int,
     reranker: Reranker | None = None,
+    as_of: date | None = None,
 ) -> AskResult:
-    query, chunks, context, timings = await _retrieve(question, session, embedder, k, reranker)
+    query, chunks, context, timings = await _retrieve(
+        question, session, embedder, k, reranker, as_of=as_of
+    )
     if not chunks or llm is None:
-        return _without_llm(query, chunks, context, timings)
+        return _without_llm(query, chunks, context, timings, as_of=as_of)
     version = get_settings().prompt_version
     t = time.perf_counter()
     completion = await llm.complete(build_messages(question, context, version))
     timings["generate"] = _ms(t, time.perf_counter())
-    return _answered(query, chunks, context, completion, version, timings)
+    return _answered(query, chunks, context, completion, version, timings, as_of=as_of)
 
 
 # ---------- streaming: the same flow, the answer sent piece by piece ----------
@@ -198,6 +221,7 @@ async def ask_stream(
     llm: LLMClient | None,
     k: int,
     reranker: Reranker | None = None,
+    as_of: date | None = None,
 ) -> AsyncIterator[StreamEvent]:
     """Retrieved, then Token* as the model writes, then Answered.
 
@@ -205,9 +229,11 @@ async def ask_stream(
     piece of text. It is part of "generate", not an extra stage. Citation and
     refusal checks need the whole answer, so they arrive only with Answered.
     """
-    query, chunks, context, timings = await _retrieve(question, session, embedder, k, reranker)
+    query, chunks, context, timings = await _retrieve(
+        question, session, embedder, k, reranker, as_of=as_of
+    )
     if not chunks or llm is None:
-        result = _without_llm(query, chunks, context, timings)
+        result = _without_llm(query, chunks, context, timings, as_of=as_of)
         yield Retrieved(result)
         yield Answered(result)
         return
@@ -220,6 +246,7 @@ async def ask_stream(
             search_query=query,
             context=context,
             timings_ms=dict(timings),
+            as_of=as_of,
         )
     )
     version = get_settings().prompt_version
@@ -241,7 +268,18 @@ async def ask_stream(
         if completion.text:
             yield Token(completion.text)
     timings["generate"] = _ms(t, time.perf_counter())
-    yield Answered(_answered(query, chunks, context, completion, version, timings, streamed=True))
+    yield Answered(
+        _answered(
+            query,
+            chunks,
+            context,
+            completion,
+            version,
+            timings,
+            streamed=True,
+            as_of=as_of,
+        )
+    )
 
 
 def _ms(a: float, b: float) -> float:

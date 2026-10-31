@@ -69,12 +69,16 @@ async def run(
             t0 = time.perf_counter()
             llm_error = None
             try:
-                result = await _answer(item.question, session, embedder, llm, k, reranker)
+                result = await _answer(
+                    item.question, session, embedder, llm, k, reranker, as_of=item.as_of
+                )
             except LLMError as exc:
                 # One failed LLM call must not lose the whole run: keep the retrieval
                 # result for this question and record the error.
                 llm_error = str(exc)
-                result = await _answer(item.question, session, embedder, None, k, reranker)
+                result = await _answer(
+                    item.question, session, embedder, None, k, reranker, as_of=item.as_of
+                )
             elapsed_ms = (time.perf_counter() - t0) * 1000
             latencies.append(elapsed_ms)
             retrieved_ids = [c.doc_id for c in result.retrieved]
@@ -260,10 +264,16 @@ async def run(
 
 
 async def _answer(
-    question: str, session: Any, embedder: Any, llm: Any, k: int, reranker: Any
+    question: str,
+    session: Any,
+    embedder: Any,
+    llm: Any,
+    k: int,
+    reranker: Any,
+    as_of: Any = None,
 ) -> AskResult:
     """Answer through the streaming path, the one users see, so first_token is measured."""
-    async for event in ask_stream(question, session, embedder, llm, k, reranker):
+    async for event in ask_stream(question, session, embedder, llm, k, reranker, as_of=as_of):
         if isinstance(event, Answered):
             return event.result
     raise RuntimeError("ask_stream ended without a result")

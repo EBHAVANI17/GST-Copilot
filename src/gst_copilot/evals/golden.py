@@ -18,6 +18,7 @@ Write each question from the official document itself, never from memory.
 
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -35,6 +36,7 @@ class GoldenItem:
     expected_sections: list[str] = field(default_factory=list)
     notes: str = ""
     reference_answer: str = ""  # short correct answer, written from the law (optional)
+    as_of: date | None = None
 
     @property
     def answerable(self) -> bool:
@@ -63,6 +65,8 @@ def load_golden(path: Path) -> list[GoldenItem]:
         if not line.strip():
             continue
         raw = json.loads(line)
+        as_of_raw = raw.get("as_of")
+        as_of = date.fromisoformat(as_of_raw) if as_of_raw else None
         item = GoldenItem(
             id=raw["id"],
             question=raw["question"],
@@ -72,6 +76,7 @@ def load_golden(path: Path) -> list[GoldenItem]:
             expected_sections=[str(s) for s in raw.get("expected_sections", [])],
             notes=raw.get("notes", ""),
             reference_answer=raw.get("reference_answer", ""),
+            as_of=as_of,
         )
         if item.type not in TYPES:
             raise ValueError(f"line {n}: type must be one of {sorted(TYPES)}")

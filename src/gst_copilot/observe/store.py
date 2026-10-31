@@ -61,6 +61,7 @@ def to_row(question: str, result: AskResult, request_id: str | None) -> AskLog:
             "context_expansion": s.context_expansion,
             "embedding_model": s.embedding_model,
             "streamed": result.streamed,
+            "as_of": result.as_of.isoformat() if result.as_of else None,
         },
     )
 
