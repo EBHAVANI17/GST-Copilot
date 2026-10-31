@@ -63,10 +63,17 @@ jobs:
         run: alembic upgrade head
       - name: Integration tests (real Postgres + pgvector)
         run: pytest -q -m integration
-      - name: Retrieval smoke eval on the synthetic corpus
+      - name: RAG Triad automated evaluation & quality gates
         run: |
           python -m gst_copilot.ingest tests/fixtures/sample_corpus/manifest.csv
-          python -m gst_copilot.evals tests/fixtures/sample_corpus/golden.jsonl --k 3 --min-hit-at-k 1.0
+          python -m gst_copilot.evals tests/fixtures/sample_corpus/golden.jsonl \
+            --k 3 \
+            --retrieval-only \
+            --min-hit-at-k 1.0 \
+            --markdown-summary eval_summary.md
+          if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+            cat eval_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Start API and check readiness
         run: |
           uvicorn gst_copilot.api.main:app --port 8000 &

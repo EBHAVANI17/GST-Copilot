@@ -10,10 +10,12 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from gst_copilot import __version__
 from gst_copilot.api.ask import router as ask_router
@@ -27,6 +29,7 @@ from gst_copilot.db.session import get_engine
 from gst_copilot.logging import configure_logging, request_id_var
 
 log = logging.getLogger("gst_copilot.request")
+UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
 
 def create_app() -> FastAPI:
@@ -60,6 +63,13 @@ def create_app() -> FastAPI:
     app.include_router(feedback_router)
     app.include_router(reconcile_router)
     app.include_router(check_invoice_router)
+
+    if UI_DIR.exists():
+        app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
+
+        @app.get("/", include_in_schema=False)
+        async def root_redirect() -> RedirectResponse:
+            return RedirectResponse("/ui", status_code=307)
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:

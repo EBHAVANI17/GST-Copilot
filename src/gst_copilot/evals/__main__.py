@@ -19,6 +19,7 @@ from typing import Any
 from gst_copilot.config import get_settings
 from gst_copilot.db.session import get_engine, get_sessionmaker
 from gst_copilot.embeddings import get_embedder
+from gst_copilot.evals.gates import QualityGate, evaluate_gates, format_markdown_summary
 from gst_copilot.evals.golden import load_golden
 from gst_copilot.evals.judge import JUDGE_VERSION, judge_answer
 from gst_copilot.evals.metrics import (
@@ -415,6 +416,54 @@ def main() -> None:
         default=None,
         help="exit with an error if hit@k is below this (for CI)",
     )
+    parser.add_argument(
+        "--min-section-hit",
+        type=float,
+        default=None,
+        help="exit with an error if section_hit@k is below this",
+    )
+    parser.add_argument(
+        "--min-context-recall",
+        type=float,
+        default=None,
+        help="exit with an error if retrieval.context_recall is below this",
+    )
+    parser.add_argument(
+        "--min-citation-accuracy",
+        type=float,
+        default=None,
+        help="exit with an error if answers.citation_accuracy is below this",
+    )
+    parser.add_argument(
+        "--min-citation-section-accuracy",
+        type=float,
+        default=None,
+        help="exit with an error if answers.citation_section_accuracy is below this",
+    )
+    parser.add_argument(
+        "--max-invalid-citations",
+        type=float,
+        default=None,
+        help="exit with an error if answers.invalid_citation_rate is above this",
+    )
+    parser.add_argument(
+        "--max-false-refusal",
+        type=float,
+        default=None,
+        help="exit with an error if answers.false_refusal is above this",
+    )
+    parser.add_argument(
+        "--min-faithfulness",
+        type=float,
+        default=None,
+        help="exit with an error if judge.faithful is below this",
+    )
+    parser.add_argument(
+        "--markdown-summary",
+        type=Path,
+        default=None,
+        help="path to write a GitHub Step Summary markdown report",
+    )
     args = parser.parse_args()
 
     reports = asyncio.run(run_many(args.golden, args.k, args.retrieval_only, args.runs, args.judge))
@@ -438,9 +487,100 @@ def main() -> None:
     )
     print(f"\nFull report: {out_file}")
 
-    hit = report["retrieval"][f"hit@{args.k}"]
-    if args.min_hit_at_k is not None and hit < args.min_hit_at_k:
-        print(f"FAIL: hit@{args.k} {hit} is below {args.min_hit_at_k}")
+    # Build gates from command line arguments
+    gates: list[QualityGate] = []
+    if args.min_hit_at_k is not None:
+        gates.append(
+            QualityGate(
+                metric_path=f"retrieval.hit@{args.k}",
+                operator=">=",
+                threshold=args.min_hit_at_k,
+                description=f"Minimum document hit@{args.k}",
+            )
+        )
+    if args.min_section_hit is not None:
+        gates.append(
+            QualityGate(
+                metric_path=f"retrieval.section_hit@{args.k}",
+                operator=">=",
+                threshold=args.min_section_hit,
+                description=f"Minimum section hit@{args.k}",
+            )
+        )
+    if args.min_context_recall is not None:
+        gates.append(
+            QualityGate(
+                metric_path="retrieval.context_recall",
+                operator=">=",
+                threshold=args.min_context_recall,
+                description="Minimum keyword context recall in retrieved chunks",
+            )
+        )
+    if args.min_citation_accuracy is not None:
+        gates.append(
+            QualityGate(
+                metric_path="answers.citation_accuracy",
+                operator=">=",
+                threshold=args.min_citation_accuracy,
+                description="Minimum citation document accuracy",
+            )
+        )
+    if args.min_citation_section_accuracy is not None:
+        gates.append(
+            QualityGate(
+                metric_path="answers.citation_section_accuracy",
+                operator=">=",
+                threshold=args.min_citation_section_accuracy,
+                description="Minimum citation section accuracy",
+            )
+        )
+    if args.max_invalid_citations is not None:
+        gates.append(
+            QualityGate(
+                metric_path="answers.invalid_citation_rate",
+                operator="<=",
+                threshold=args.max_invalid_citations,
+                description="Maximum invalid / hallucinated citation rate",
+            )
+        )
+    if args.max_false_refusal is not None:
+        gates.append(
+            QualityGate(
+                metric_path="answers.false_refusal",
+                operator="<=",
+                threshold=args.max_false_refusal,
+                description="Maximum false refusal rate on answerable queries",
+            )
+        )
+    if args.min_faithfulness is not None:
+        gates.append(
+            QualityGate(
+                metric_path="judge.faithful",
+                operator=">=",
+                threshold=args.min_faithfulness,
+                description="Minimum faithful claim rate from LLM judge",
+            )
+        )
+
+    gate_results = evaluate_gates(report, gates) if gates else []
+
+    if gate_results:
+        print("\nQuality Gates Summary:")
+        for gr in gate_results:
+            print(f"  {gr.message}")
+
+    if args.markdown_summary is not None:
+        summary_md = format_markdown_summary(report, gate_results)
+        args.markdown_summary.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_summary.write_text(summary_md, encoding="utf-8")
+        print(f"Wrote markdown summary: {args.markdown_summary}")
+
+    # Check for gate failures
+    failed_gates = [gr for gr in gate_results if not gr.passed]
+    if failed_gates:
+        print(f"\nFAIL: {len(failed_gates)} quality gate(s) failed:")
+        for gr in failed_gates:
+            print(f"  - {gr.message}")
         sys.exit(1)
 
 

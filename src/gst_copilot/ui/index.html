@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GST Copilot - Statutory Compliance Engine</title>
+  <link rel="icon" type="image/svg+xml" href="/ui/favicon.svg">
+  <link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+  <!-- Ambient Motion Graphic Background -->
+  <div class="ambient-background" aria-hidden="true">
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+    <div class="ambient-mesh"></div>
+  </div>
+
+  <!-- Interactive Cursor Follower -->
+  <div id="cursor-glow" class="cursor-glow" aria-hidden="true"></div>
+  <div id="custom-cursor-ring" class="cursor-ring" aria-hidden="true"></div>
+  <div id="custom-cursor-dot" class="cursor-dot" aria-hidden="true"></div>
+
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-main">
+        <div class="brand">
+          <svg class="brand-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="#1e293b"/>
+            <path d="M16 5L7 9v8c0 6.075 3.84 11.41 9 12.8 5.16-1.39 9-6.725 9-12.8V9l-9-4z" fill="#0f172a" stroke="#2563eb" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M11 16l3.5 3.5 7-7" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div>
+            <h1 class="brand-title">GST Copilot</h1>
+            <p class="brand-tagline">Statutory Compliance &amp; Deterministic ITC Engine</p>
+          </div>
+        </div>
+        <div class="header-status">
+          <div class="status-indicator" id="system-status">
+            <span class="status-dot status-unknown" id="status-dot"></span>
+            <span class="status-label" id="status-label">Checking system...</span>
+          </div>
+          <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+            <svg class="theme-icon sun-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
+            </svg>
+            <svg class="theme-icon moon-icon hidden" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+            </svg>
+            <span id="theme-label" class="theme-label">Light</span>
+          </button>
+        </div>
+      </div>
+      <div class="header-corpus">
+        <svg class="meta-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 2.5h10a1 1 0 011 1v9a1 1 0 01-1 1H3a1 1 0 01-1-1v-9a1 1 0 011-1z"/>
+          <path d="M5 6h6M5 9h4"/>
+        </svg>
+        <span id="corpus-metadata">Corpus: Central Goods &amp; Services Tax Act (as of 30-09-2020) &bull; CGST Rules (as of 24-09-2021) &bull; Circular 170/02/2022-GST</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="app-nav" role="tablist">
+      <button class="nav-tab active" role="tab" aria-selected="true" data-tab="tab-ask">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+          <circle cx="8.5" cy="8.5" r="5.5"/>
+          <path d="M13 13l4.5 4.5" stroke-linecap="round"/>
+        </svg>
+        <span>Ask Law</span>
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-tab="tab-reconcile">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M4 4h12v12H4zM4 10h12M10 4v12" stroke-linecap="round"/>
+        </svg>
+        <span>Reconcile ITC</span>
+      </button>
+      <button class="nav-tab" role="tab" aria-selected="false" data-tab="tab-invoice">
+        <svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M10 2L3 5v6c0 4.5 3 8.5 7 9.5 4-1 7-5 7-9.5V5l-7-3z"/>
+          <path d="M7 10l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Check Invoice</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="app-content">
+
+      <!-- ==================== TAB 1: ASK LAW ==================== -->
+      <section id="tab-ask" class="tab-pane active" role="tabpanel">
+        <div class="panel-card">
+          <div class="prompt-suggestions">
+            <span class="suggestion-label">Suggested queries:</span>
+            <button type="button" class="chip-btn" data-query="Can I claim ITC on the tax part of capital goods if I've claimed depreciation on it?">Depreciation on capital goods</button>
+            <button type="button" class="chip-btn" data-query="What documents can be used to claim input tax credit under rule 36?">Documents under Rule 36</button>
+            <button type="button" class="chip-btn" data-query="What conditions must be met to claim input tax credit under section 16?">Conditions under Section 16</button>
+          </div>
+
+          <form id="ask-form" class="ask-form">
+            <div class="input-group">
+              <label for="ask-input" class="visually-hidden">Question on GST law</label>
+              <textarea id="ask-input" class="ask-textarea" rows="3" placeholder="Ask a question grounded in Indian GST statutory law (e.g. Can I claim ITC on capital goods if depreciation is claimed?)..." required minlength="3" maxlength="1000"></textarea>
+            </div>
+            <div class="ask-controls">
+              <div class="as-of-control">
+                <label for="ask-as-of">Statutory As-of Date (optional):</label>
+                <input type="date" id="ask-as-of" class="date-input">
+              </div>
+              <button type="submit" id="ask-submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M2 8h12M10 4l4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Ask Question</span>
+              </button>
+            </div>
+          </form>
+
+          <div id="ask-error" class="alert alert-error hidden" role="alert"></div>
+
+          <!-- Answer Container -->
+          <div id="ask-result-container" class="ask-result-container hidden">
+            <div class="result-header">
+              <span class="badge badge-indigo" id="ask-mode-badge">Grounded Answer</span>
+              <span class="model-meta" id="ask-model-meta"></span>
+            </div>
+
+            <div id="ask-refusal-alert" class="alert alert-warning hidden" role="alert">
+              <svg class="alert-icon" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3.5a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4A.75.75 0 018 4.5zm0 8a1 1 0 100-2 1 1 0 000 2z"/>
+              </svg>
+              <span>No direct answer found in indexed statutory sources for this transaction point.</span>
+            </div>
+
+            <div class="answer-box">
+              <div id="ask-answer-text" class="markdown-body"></div>
+              <div id="ask-stream-cursor" class="stream-cursor hidden"></div>
+            </div>
+
+            <!-- Citations & Feedback -->
+            <div class="answer-actions">
+              <div class="feedback-group" id="feedback-group">
+                <span class="feedback-label">Was this answer helpful?</span>
+                <button type="button" class="btn-icon-action" id="feedback-up" title="Helpful" aria-label="Mark helpful">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                    <path d="M7 10v7H4a1 1 0 01-1-1v-5a1 1 0 011-1h3zm0 0l4-7a1.5 1.5 0 012.5 1.5V7h4a2 2 0 012 2v2a5 5 0 01-5 5H7" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <button type="button" class="btn-icon-action" id="feedback-down" title="Not helpful" aria-label="Mark not helpful">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75">
+                    <path d="M7 10V3H4a1 1 0 00-1 1v5a1 1 0 001 1h3zm0 0l4 7a1.5 1.5 0 002.5-1.5V13h4a2 2 0 002-2V9a5 5 0 00-5-5H7" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <span id="feedback-status" class="feedback-status"></span>
+              </div>
+              <button type="button" id="toggle-timings-btn" class="text-link">Show Timings &amp; Latency</button>
+            </div>
+
+            <div id="ask-timings" class="timings-panel hidden"></div>
+
+            <!-- Sources List -->
+            <div class="sources-panel">
+              <h3 class="panel-subtitle">Indexed Sources &amp; Retrieved Context</h3>
+              <div id="sources-list" class="sources-list"></div>
+            </div>
+
+            <div class="disclaimer-footer" id="ask-disclaimer"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 2: RECONCILE ITC ==================== -->
+      <section id="tab-reconcile" class="tab-pane" role="tabpanel">
+        <div class="panel-card">
+          <div class="privacy-notice">
+            <svg class="notice-icon" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3a1 1 0 110 2 1 1 0 010-2zm1 8H7v-4h2v4z"/>
+            </svg>
+            <span><strong>Strict In-Memory Processing:</strong> Invoices are parsed into memory during calculation and never written to disk or the database.</span>
+          </div>
+
+          <form id="reconcile-form" class="reconcile-form">
+            <div class="dropzone-grid">
+              <div class="dropzone" id="dz-books">
+                <input type="file" id="input-books" accept=".csv" class="visually-hidden" required>
+                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <path d="M14 2v6h6M8 13h8M8 17h5"/>
+                </svg>
+                <div class="dropzone-text">
+                  <span class="dropzone-title">Purchase Register (Books)</span>
+                  <span class="dropzone-hint" id="file-label-books">Drop CSV or click to browse</span>
+                </div>
+              </div>
+
+              <div class="dropzone" id="dz-twob">
+                <input type="file" id="input-twob" accept=".csv" class="visually-hidden" required>
+                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <div class="dropzone-text">
+                  <span class="dropzone-title">GSTR-2B Statement (Government)</span>
+                  <span class="dropzone-hint" id="file-label-twob">Drop CSV or click to browse</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="reconcile-controls">
+              <div class="tolerance-control">
+                <label for="recon-tolerance">Tolerance (Rupees):</label>
+                <input type="number" id="recon-tolerance" value="1.00" min="0" max="100" step="0.01" class="number-input">
+              </div>
+              <div class="recon-buttons">
+                <button type="button" id="load-sample-recon" class="btn btn-secondary">Load Demo Samples</button>
+                <button type="submit" id="recon-submit" class="btn btn-primary">
+                  <svg class="btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 8a6 6 0 1111.3 2.8M14 4v4h-4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Run Reconciliation</span>
+                </button>
+                <button type="button" id="download-recon-csv" class="btn btn-outline hidden">
+                  <svg class="btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M8 2v9M4 7l4 4 4-4M2 13h12" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Download CSV</span>
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <div id="recon-error" class="alert alert-error hidden" role="alert"></div>
+
+          <!-- Reconcile Results Section -->
+          <div id="recon-results-container" class="recon-results-container hidden">
+            <h3 class="panel-subtitle">Classification Summary</h3>
+            <div id="summary-cards" class="summary-cards-grid"></div>
+
+            <!-- Draft GSTR-3B Table 4 -->
+            <div class="table4-section">
+              <div class="section-heading">
+                <div>
+                  <h3 class="panel-subtitle">Draft Form GSTR-3B: Table 4 (ITC)</h3>
+                  <p class="section-desc">Auditable compilation compliant with CBIC Circular 170/02/2022-GST.</p>
+                </div>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table" id="table4-grid">
+                  <thead>
+                    <tr>
+                      <th>Table 4 Section</th>
+                      <th>IGST (&#8377;)</th>
+                      <th>CGST (&#8377;)</th>
+                      <th>SGST (&#8377;)</th>
+                      <th>Total (&#8377;)</th>
+                      <th>Invoices</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table4-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Detailed Invoices Table -->
+            <div class="table-section">
+              <div class="table-header-controls">
+                <h3 class="panel-subtitle">Invoice Mismatch Breakdown</h3>
+                <div class="table-filters">
+                  <input type="text" id="recon-search" class="search-input" placeholder="Search GSTIN, invoice #...">
+                  <select id="recon-filter-label" class="select-input">
+                    <option value="">All Categories</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-wrapper">
+                <table class="data-table" id="invoices-table">
+                  <thead>
+                    <tr>
+                      <th>Category</th>
+                      <th>Supplier GSTIN</th>
+                      <th>Invoice No</th>
+                      <th>Tax Amount (&#8377;)</th>
+                      <th>Mismatch Details</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invoices-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 3: CHECK INVOICE ==================== -->
+      <section id="tab-invoice" class="tab-pane" role="tabpanel">
+        <div class="panel-card">
+          <div class="card-intro">
+            <div>
+              <h2 class="card-title">Pre-Accounting Invoice Validator</h2>
+              <p class="card-desc">Verifies GSTIN checksum format, place of supply, and arithmetic before bills reach your ledger.</p>
+            </div>
+            <div class="sample-actions">
+              <button type="button" id="btn-load-valid-inv" class="btn btn-secondary">Load Valid Sample</button>
+              <button type="button" id="btn-load-invalid-inv" class="btn btn-secondary">Load Invalid Sample</button>
+            </div>
+          </div>
+
+          <form id="check-invoice-form" class="invoice-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="inv-supplier-gstin">Supplier GSTIN *</label>
+                <input type="text" id="inv-supplier-gstin" class="text-input" placeholder="e.g. 27AAPFU0939F1ZV" required maxlength="15">
+              </div>
+              <div class="form-group">
+                <label for="inv-invoice-no">Invoice Number *</label>
+                <input type="text" id="inv-invoice-no" class="text-input" placeholder="e.g. INV-2024-001" required maxlength="50">
+              </div>
+              <div class="form-group">
+                <label for="inv-invoice-date">Invoice Date *</label>
+                <input type="date" id="inv-invoice-date" class="date-input" required>
+              </div>
+              <div class="form-group">
+                <label for="inv-pos">Place of Supply (2-digit State) *</label>
+                <input type="text" id="inv-pos" class="text-input" placeholder="e.g. 27" required maxlength="2">
+              </div>
+              <div class="form-group">
+                <label for="inv-taxable-val">Taxable Value (&#8377;) *</label>
+                <input type="number" id="inv-taxable-val" class="number-input" placeholder="100000.00" step="0.01" min="0" required>
+              </div>
+              <div class="form-group">
+                <label for="inv-cgst">CGST (&#8377;)</label>
+                <input type="number" id="inv-cgst" class="number-input" placeholder="9000.00" step="0.01" min="0" value="0.00">
+              </div>
+              <div class="form-group">
+                <label for="inv-sgst">SGST (&#8377;)</label>
+                <input type="number" id="inv-sgst" class="number-input" placeholder="9000.00" step="0.01" min="0" value="0.00">
+              </div>
+              <div class="form-group">
+                <label for="inv-igst">IGST (&#8377;)</label>
+                <input type="number" id="inv-igst" class="number-input" placeholder="0.00" step="0.01" min="0" value="0.00">
+              </div>
+              <div class="form-group form-group-span">
+                <label for="inv-total">Total Invoice Value (&#8377;) *</label>
+                <input type="number" id="inv-total" class="number-input font-bold" placeholder="118000.00" step="0.01" min="0" required>
+              </div>
+            </div>
+
+            <div class="form-submit-row">
+              <button type="submit" id="inv-submit" class="btn btn-primary">
+                <svg class="btn-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M13 2L6 10l-3-3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Validate Invoice</span>
+              </button>
+            </div>
+          </form>
+
+          <div id="check-invoice-error" class="alert alert-error hidden" role="alert"></div>
+
+          <!-- Invoice Check Results -->
+          <div id="check-invoice-results" class="invoice-results hidden">
+            <div id="check-status-banner" class="status-banner"></div>
+            <div class="rules-list" id="check-rules-list"></div>
+            <div class="disclaimer-footer" id="check-disclaimer"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Side Slide-over Drawer (Passage / Explanation Inspection) -->
+    <aside id="detail-drawer" class="detail-drawer" aria-hidden="true">
+      <div class="drawer-overlay" id="drawer-overlay"></div>
+      <div class="drawer-content">
+        <div class="drawer-header">
+          <div class="drawer-title-group">
+            <span class="badge badge-gray" id="drawer-tag">INSPECTION</span>
+            <h3 id="drawer-title" class="drawer-title">Details</h3>
+          </div>
+          <button type="button" id="drawer-close" class="btn-close" aria-label="Close drawer">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3l10 10M13 3L3 13" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="drawer-body" id="drawer-body"></div>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
