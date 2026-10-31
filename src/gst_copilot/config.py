@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://gst:gst@localhost:5432/gst_copilot"
     redis_url: str = "redis://localhost:6379/0"
 
+    # Database connection pool settings (M6, ADR 0029)
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    db_pool_timeout: float = 30.0
+
+    # CORS origins for web clients and sidecars (M6, ADR 0029)
+    cors_origins: list[str] = ["*"]
+
     # How long a readiness check may wait on a dependency before reporting it down.
     dependency_timeout_seconds: float = 2.0
 

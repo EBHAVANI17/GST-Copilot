@@ -18,7 +18,15 @@ from gst_copilot.config import get_settings
 def get_engine() -> AsyncEngine:
     # pool_pre_ping: check a pooled connection is alive before using it,
     # so a database restart doesn't cause errors on the next requests.
-    return create_async_engine(get_settings().database_url, pool_pre_ping=True)
+    s = get_settings()
+    kw: dict[str, object] = {"pool_pre_ping": True}
+    if "sqlite" not in s.database_url:
+        kw.update(
+            pool_size=s.db_pool_size,
+            max_overflow=s.db_max_overflow,
+            pool_timeout=s.db_pool_timeout,
+        )
+    return create_async_engine(s.database_url, **kw)
 
 
 @lru_cache
