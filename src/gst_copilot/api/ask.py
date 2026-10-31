@@ -7,6 +7,7 @@ passages at once and the answer word by word while the model writes it.
 import json
 import logging
 from collections.abc import AsyncIterator
+from datetime import date
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,6 +32,10 @@ LLM_UNAVAILABLE = "The language model is unavailable."
 class AskRequest(BaseModel):
     question: str = Field(description="3 to ASK_MAX_QUESTION_CHARS (1000) characters")
     top_k: int | None = Field(default=None, ge=1, le=20)
+    as_of: date | None = Field(
+        default=None,
+        description="Filter retrieval to provisions in force on this date (YYYY-MM-DD)",
+    )
 
     @field_validator("question")
     @classmethod
@@ -73,6 +78,7 @@ class AskResponse(BaseModel):
     model: str | None
     timings_ms: dict[str, float]
     disclaimer: str = "Information, not tax advice."
+    as_of: date | None = None
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -86,7 +92,7 @@ async def ask_endpoint(
 ) -> AskResponse:
     k = body.top_k or get_settings().retrieval_top_k
     try:
-        result = await ask(body.question, session, embedder, llm, k, reranker)
+        result = await ask(body.question, session, embedder, llm, k, reranker, as_of=body.as_of)
     except LLMError as exc:
         # Don't leak provider details to the caller; they are in the logs.
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, LLM_UNAVAILABLE) from exc
@@ -107,6 +113,7 @@ async def ask_endpoint(
         prompt_version=result.prompt_version,
         model=result.model,
         timings_ms=result.timings_ms,
+        as_of=result.as_of,
     )
 
 
@@ -145,6 +152,7 @@ class StreamDone(BaseModel):
     model: str | None
     timings_ms: dict[str, float]
     disclaimer: str = "Information, not tax advice."
+    as_of: date | None = None
 
 
 def sse(event: str, data: BaseModel | dict[str, Any]) -> str:
@@ -188,7 +196,9 @@ async def ask_stream_endpoint(
     async def events() -> AsyncIterator[str]:
         token = request_id_var.set(request_id)
         try:
-            async for event in ask_stream(body.question, session, embedder, llm, k, reranker):
+            async for event in ask_stream(
+                body.question, session, embedder, llm, k, reranker, as_of=body.as_of
+            ):
                 if isinstance(event, Token):
                     yield sse("token", {"text": event.text})
                 elif isinstance(event, Retrieved):
@@ -222,6 +232,7 @@ async def ask_stream_endpoint(
                             prompt_version=r.prompt_version,
                             model=r.model,
                             timings_ms=r.timings_ms,
+                            as_of=r.as_of,
                         ),
                     )
         except LLMError as exc:
