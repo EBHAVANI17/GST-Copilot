@@ -109,7 +109,7 @@ EXPLANATIONS: dict[Label, LabelExplanation] = {
             "tracking row 4(D)(1)."
         ),
         gstr3b_row="Table 4(A)(5) gross AND Table 4(D)(1) [Reclaimed ITC]",
-        citation="Circular 170/02/2022-GST Para 4.3(E) & Annexure Note 4; CGST Act s.16(4)",
+        citation="Circular 170/02/2022-GST Para 4.3(C) & Annexure; CGST Act s.16(4)",
     ),
     "gstin_typo": LabelExplanation(
         label="gstin_typo",
