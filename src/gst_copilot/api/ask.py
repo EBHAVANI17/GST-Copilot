@@ -79,6 +79,7 @@ class AskResponse(BaseModel):
     timings_ms: dict[str, float]
     disclaimer: str = "Information, not tax advice."
     as_of: date | None = None
+    sub_queries: list[str] = Field(default_factory=list)
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -115,6 +116,7 @@ async def ask_endpoint(
         timings_ms=result.timings_ms,
         disclaimer=_build_disclaimer(result),
         as_of=result.as_of,
+        sub_queries=result.sub_queries,
     )
 
 
@@ -170,6 +172,7 @@ class StreamDone(BaseModel):
     timings_ms: dict[str, float]
     disclaimer: str = "Information, not tax advice."
     as_of: date | None = None
+    sub_queries: list[str] = Field(default_factory=list)
 
 
 def sse(event: str, data: BaseModel | dict[str, Any]) -> str:
@@ -225,6 +228,7 @@ async def ask_stream_endpoint(
                         {
                             "mode": r.mode,
                             "search_query": r.search_query,
+                            "sub_queries": r.sub_queries,
                             "passages": [p.model_dump() for p in _passages(r)],
                         },
                     )
@@ -251,6 +255,7 @@ async def ask_stream_endpoint(
                             timings_ms=r.timings_ms,
                             disclaimer=_build_disclaimer(r),
                             as_of=r.as_of,
+                            sub_queries=r.sub_queries,
                         ),
                     )
         except LLMError as exc:

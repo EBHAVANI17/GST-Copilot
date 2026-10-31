@@ -126,6 +126,12 @@
               <span class="model-meta" id="ask-model-meta"></span>
             </div>
 
+            <!-- Multi-Hop Query Decomposition Plan -->
+            <div id="ask-subqueries-container" class="subqueries-container hidden">
+              <span class="subqueries-label">Multi-Hop Query Plan:</span>
+              <div id="ask-subqueries-list" class="subqueries-list"></div>
+            </div>
+
             <div id="ask-refusal-alert" class="alert alert-warning hidden" role="alert">
               <svg class="alert-icon" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 3.5a.75.75 0 01.75.75v4a.75.75 0 01-1.5 0v-4A.75.75 0 018 4.5zm0 8a1 1 0 100-2 1 1 0 000 2z"/>
@@ -305,6 +311,20 @@
               <button type="button" id="btn-load-invalid-inv" class="btn btn-secondary">Load Invalid Sample</button>
             </div>
           </div>
+
+          <!-- PDF Invoice Upload & Auto-Extraction Dropzone -->
+          <div class="dropzone dropzone-pdf" id="dz-pdf-invoice">
+            <input type="file" id="input-pdf-invoice" accept=".pdf" class="visually-hidden">
+            <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M7 21h10a2 2 0 002-2V9l-5-5H7a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 4v5h5M9 13h6M9 17h4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div class="dropzone-text">
+              <span class="dropzone-title">Upload / Drop PDF Invoice</span>
+              <span class="dropzone-hint" id="file-label-pdf">Drop PDF here to auto-extract statutory fields &amp; validate in memory</span>
+            </div>
+          </div>
+          <div class="form-divider"><span>OR ENTER INVOICE DETAILS MANUALLY</span></div>
 
           <form id="check-invoice-form" class="invoice-form">
             <div class="form-grid">

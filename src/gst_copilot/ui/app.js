@@ -489,6 +489,12 @@ askForm.addEventListener('submit', async (e) => {
   askModelMeta.textContent = '';
   feedbackStatus.textContent = '';
   document.getElementById('ask-timings').classList.add('hidden');
+  const subqueriesContainer = document.getElementById('ask-subqueries-container');
+  const subqueriesList = document.getElementById('ask-subqueries-list');
+  if (subqueriesContainer) {
+    subqueriesContainer.classList.add('hidden');
+    if (subqueriesList) subqueriesList.innerHTML = '';
+  }
   askSubmitBtn.disabled = true;
 
   state.currentAskId = null;
@@ -545,6 +551,20 @@ askForm.addEventListener('submit', async (e) => {
               state.passagesMap.set(p.ref, p);
             }
             renderSourcesList(state.currentPassages, []);
+
+            if (subqueriesContainer && data.sub_queries && data.sub_queries.length > 1) {
+              subqueriesContainer.classList.remove('hidden');
+              subqueriesList.innerHTML = data.sub_queries
+                .map(
+                  (sq, i) => `
+                <span class="subquery-pill">
+                  <span class="subquery-num">${i + 1}</span>
+                  <span>${escapeHtml(sq)}</span>
+                </span>
+              `
+                )
+                .join('');
+            }
           } else if (eventType === 'token') {
             accumulatedText += data.text || '';
             askAnswerEl.innerHTML = renderAnswerMarkdown(accumulatedText, citedList);
@@ -1050,6 +1070,81 @@ const checkStatusBanner = document.getElementById('check-status-banner');
 const checkRulesList = document.getElementById('check-rules-list');
 const checkDisclaimer = document.getElementById('check-disclaimer');
 const checkErrorEl = document.getElementById('check-invoice-error');
+
+// PDF Invoice Dropzone & Auto-Extraction
+const dzPdf = document.getElementById('dz-pdf-invoice');
+const inputPdf = document.getElementById('input-pdf-invoice');
+const fileLabelPdf = document.getElementById('file-label-pdf');
+
+if (dzPdf && inputPdf) {
+  dzPdf.addEventListener('click', () => inputPdf.click());
+  dzPdf.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dzPdf.classList.add('dragover');
+  });
+  dzPdf.addEventListener('dragleave', () => dzPdf.classList.remove('dragover'));
+  dzPdf.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dzPdf.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+      handlePdfUpload(e.dataTransfer.files[0]);
+    }
+  });
+  inputPdf.addEventListener('change', () => {
+    if (inputPdf.files.length) {
+      handlePdfUpload(inputPdf.files[0]);
+    }
+  });
+}
+
+async function handlePdfUpload(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    checkErrorEl.textContent = 'Please select a valid PDF file.';
+    checkErrorEl.classList.remove('hidden');
+    return;
+  }
+  if (fileLabelPdf) fileLabelPdf.textContent = `Analyzing ${file.name}...`;
+  checkErrorEl.classList.add('hidden');
+
+  const formData = new FormData();
+  formData.append('invoice_file', file);
+
+  try {
+    const res = await fetch('/check-invoice/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (fileLabelPdf) fileLabelPdf.textContent = `Extracted: ${file.name}`;
+
+    // Auto-fill form fields with extracted statutory invoice data
+    if (data.extracted_invoice) {
+      const ext = data.extracted_invoice;
+      if (ext.supplier_gstin) invSupplierGstin.value = ext.supplier_gstin;
+      if (ext.invoice_no) invInvoiceNo.value = ext.invoice_no;
+      if (ext.invoice_date) invInvoiceDate.value = ext.invoice_date;
+      if (ext.place_of_supply) invPos.value = ext.place_of_supply;
+      if (ext.taxable_value) invTaxableVal.value = ext.taxable_value;
+      if (ext.cgst) invCgst.value = ext.cgst;
+      if (ext.sgst) invSgst.value = ext.sgst;
+      if (ext.igst) invIgst.value = ext.igst;
+      if (ext.invoice_total) invTotal.value = ext.invoice_total;
+    }
+
+    renderInvoiceChecks(data);
+    checkResultsContainer.classList.remove('hidden');
+  } catch (err) {
+    if (fileLabelPdf) {
+      fileLabelPdf.textContent = 'Drop PDF here to auto-extract statutory fields & validate';
+    }
+    checkErrorEl.textContent = `PDF Upload & Extraction error: ${err.message}`;
+    checkErrorEl.classList.remove('hidden');
+  }
+}
 
 // Valid Sample button
 document.getElementById('btn-load-valid-inv').addEventListener('click', () => {

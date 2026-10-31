@@ -1480,6 +1480,94 @@ body {
   font-family: monospace;
 }
 
+/* Multi-Hop Query Decomposition Plan */
+.subqueries-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-muted);
+  border: 1px dashed var(--primary);
+  border-radius: var(--radius);
+  margin-top: 14px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.subqueries-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+}
+
+.subqueries-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subquery-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.subquery-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* PDF Upload Dropzone & Form Divider */
+.dropzone-pdf {
+  margin-bottom: 16px;
+  background: var(--bg-card);
+  border: 2px dashed var(--border);
+  cursor: pointer;
+}
+
+.dropzone-pdf:hover, .dropzone-pdf.dragover {
+  border-color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.form-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 16px 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.form-divider::before,
+.form-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-divider span {
+  padding: 0 12px;
+}
+
 @media (max-width: 640px) {
   .app-layout { padding: 16px 12px; }
   .header-main { flex-direction: column; align-items: flex-start; }

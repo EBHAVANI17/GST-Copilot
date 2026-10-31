@@ -18,6 +18,7 @@ from gst_copilot.embeddings import Embedder
 from gst_copilot.rag.expand import expand
 from gst_copilot.rag.glossary import expand_query
 from gst_copilot.rag.llm import Completion, LLMClient, LLMError, StreamingLLMClient
+from gst_copilot.rag.multihop import decompose_query, fuse_multihop_candidates
 from gst_copilot.rag.prompt import build_messages, cited_refs, is_partial, is_refusal
 from gst_copilot.rag.rerank import Reranker, rerank
 from gst_copilot.rag.retriever import RetrievedChunk, candidate_pool, search
@@ -44,6 +45,7 @@ class AskResult:
     completion_tokens: int | None = None
     streamed: bool = False  # answered through POST /ask/stream
     as_of: date | None = None
+    sub_queries: list[str] = field(default_factory=list)
 
 
 async def _retrieve(
@@ -53,15 +55,47 @@ async def _retrieve(
     k: int,
     reranker: Reranker | None,
     as_of: date | None = None,
-) -> tuple[str, list[RetrievedChunk], list[RetrievedChunk], dict[str, float]]:
-    """Embed, search, rerank, expand: (search query, top-k, LLM context, timings)."""
+) -> tuple[str, list[RetrievedChunk], list[RetrievedChunk], dict[str, float], list[str]]:
+    """Embed, search, rerank, expand: (search query, top-k, LLM context, timings, sub_queries)."""
     t0 = time.perf_counter()
     settings = get_settings()
+    sub_queries = decompose_query(question)
     # Search with the law's wording added; the LLM still gets the original question.
     query = expand_query(question) if settings.query_expansion == "glossary" else question
     qvec = embedder.embed_query(query)
     t1 = time.perf_counter()
-    if reranker is None:
+
+    if len(sub_queries) > 1:
+        sub_candidate_pools: list[list[RetrievedChunk]] = []
+        n_candidates = max(settings.rerank_candidates, k) if reranker is not None else k
+        for sq in sub_queries:
+            sq_expanded = expand_query(sq) if settings.query_expansion == "glossary" else sq
+            sq_vec = embedder.embed_query(sq_expanded)
+            if reranker is None:
+                sq_chunks = (
+                    await search(session, sq_vec, k, query_text=sq_expanded, as_of=as_of)
+                    if as_of is not None
+                    else await search(session, sq_vec, k, query_text=sq_expanded)
+                )
+                sub_candidate_pools.append(sq_chunks)
+            else:
+                sq_pool = (
+                    await candidate_pool(session, sq_vec, sq_expanded, n_candidates, as_of=as_of)
+                    if as_of is not None
+                    else await candidate_pool(session, sq_vec, sq_expanded, n_candidates)
+                )
+                sub_candidate_pools.append(sq_pool)
+        tr = time.perf_counter()
+        fused = fuse_multihop_candidates(sub_candidate_pools, k=max(settings.rerank_candidates, k))
+        if reranker is None:
+            chunks = fused[:k]
+            t2 = time.perf_counter()
+            timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, t2)}
+        else:
+            chunks = rerank(reranker, query, fused, k)
+            t2 = time.perf_counter()
+            timings = {"embed": _ms(t0, t1), "retrieve": _ms(t1, tr), "rerank": _ms(tr, t2)}
+    elif reranker is None:
         chunks = (
             await search(session, qvec, k, query_text=query, as_of=as_of)
             if as_of is not None
@@ -85,7 +119,7 @@ async def _retrieve(
     if chunks and settings.context_expansion == "section":
         context = await expand(session, chunks, qvec, settings.context_max_chars)
         timings["expand"] = _ms(t2, time.perf_counter())
-    return query, chunks, context, timings
+    return query, chunks, context, timings, sub_queries
 
 
 def _without_llm(
@@ -94,6 +128,7 @@ def _without_llm(
     context: list[RetrievedChunk],
     timings: dict[str, float],
     as_of: date | None = None,
+    sub_queries: list[str] | None = None,
 ) -> AskResult:
     if not chunks:
         return AskResult(
@@ -103,6 +138,7 @@ def _without_llm(
             search_query=query,
             timings_ms=timings,
             as_of=as_of,
+            sub_queries=sub_queries or [],
         )
     return AskResult(
         mode="retrieval_only",
@@ -112,6 +148,7 @@ def _without_llm(
         context=context,
         timings_ms=timings,
         as_of=as_of,
+        sub_queries=sub_queries or [],
     )
 
 
@@ -124,6 +161,7 @@ def _answered(
     timings: dict[str, float],
     streamed: bool = False,
     as_of: date | None = None,
+    sub_queries: list[str] | None = None,
 ) -> AskResult:
     allowed = {c.ref for c in context}
     refs = cited_refs(completion.text)
@@ -146,6 +184,7 @@ def _answered(
         completion_tokens=completion.completion_tokens,
         streamed=streamed,
         as_of=as_of,
+        sub_queries=sub_queries or [],
     )
     log.info(
         "question answered",
@@ -177,16 +216,18 @@ async def ask(
     reranker: Reranker | None = None,
     as_of: date | None = None,
 ) -> AskResult:
-    query, chunks, context, timings = await _retrieve(
+    query, chunks, context, timings, sub_queries = await _retrieve(
         question, session, embedder, k, reranker, as_of=as_of
     )
     if not chunks or llm is None:
-        return _without_llm(query, chunks, context, timings, as_of=as_of)
+        return _without_llm(query, chunks, context, timings, as_of=as_of, sub_queries=sub_queries)
     version = get_settings().prompt_version
     t = time.perf_counter()
     completion = await llm.complete(build_messages(question, context, version))
     timings["generate"] = _ms(t, time.perf_counter())
-    return _answered(query, chunks, context, completion, version, timings, as_of=as_of)
+    return _answered(
+        query, chunks, context, completion, version, timings, as_of=as_of, sub_queries=sub_queries
+    )
 
 
 # ---------- streaming: the same flow, the answer sent piece by piece ----------
@@ -229,11 +270,11 @@ async def ask_stream(
     piece of text. It is part of "generate", not an extra stage. Citation and
     refusal checks need the whole answer, so they arrive only with Answered.
     """
-    query, chunks, context, timings = await _retrieve(
+    query, chunks, context, timings, sub_queries = await _retrieve(
         question, session, embedder, k, reranker, as_of=as_of
     )
     if not chunks or llm is None:
-        result = _without_llm(query, chunks, context, timings, as_of=as_of)
+        result = _without_llm(query, chunks, context, timings, as_of=as_of, sub_queries=sub_queries)
         yield Retrieved(result)
         yield Answered(result)
         return
@@ -247,6 +288,7 @@ async def ask_stream(
             context=context,
             timings_ms=dict(timings),
             as_of=as_of,
+            sub_queries=sub_queries,
         )
     )
     version = get_settings().prompt_version
@@ -278,6 +320,7 @@ async def ask_stream(
             timings,
             streamed=True,
             as_of=as_of,
+            sub_queries=sub_queries,
         )
     )
 
