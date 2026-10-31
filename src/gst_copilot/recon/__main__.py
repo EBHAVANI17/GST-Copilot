@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print statutory explanation and GSTR-3B row for each label",
     )
+    p.add_argument(
+        "--gstr3b",
+        action="store_true",
+        help="print draft Form GSTR-3B Table 4 compiled from reconciliation",
+    )
     args = p.parse_args(argv)
 
     if args.folder:
@@ -77,6 +82,29 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  - Action: {info.action}")
                 print(f"  - GSTR-3B: {info.gstr3b_row}")
                 print(f"  - Citation: {info.citation}")
+    if args.gstr3b:
+        from gst_copilot.recon.gstr3b import compile_table4
+
+        t4 = compile_table4(books, gstr2b, results)
+        print("\n### Draft Form GSTR-3B Table 4 (Eligible ITC)")
+        print(f"> {t4.disclaimer}\n")
+        print(
+            "| Row | Description | Integrated Tax (Rs) | Central Tax (Rs) | "
+            "State Tax (Rs) | Invoices |"
+        )
+        print("|---|---|---|---|---|---|")
+        for row in (
+            t4.a5_all_other_itc,
+            t4.b1_permanent_reversals,
+            t4.b2_temporary_reversals,
+            t4.c_net_itc,
+            t4.d1_reclaimed,
+            t4.d2_ineligible,
+        ):
+            print(
+                f"| {row.row_key} | {row.description} | {row.tax.igst:.2f} | "
+                f"{row.tax.cgst:.2f} | {row.tax.sgst:.2f} | {row.invoice_count} |"
+            )
     if expected_path and expected_path.exists():
         print("\nScore against expected.csv:")
         print(render(score(results, read_expected(expected_path))))

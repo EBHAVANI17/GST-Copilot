@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from gst_copilot.config import get_settings
 from gst_copilot.recon.csvio import parse_invoices
 from gst_copilot.recon.explain import EXPLANATIONS
+from gst_copilot.recon.gstr3b import Table4Row, compile_table4
 from gst_copilot.recon.matcher import reconcile, results_csv
 from gst_copilot.recon.models import LABELS, Invoice, Source
 
@@ -44,6 +45,32 @@ class ExplanationResponse(BaseModel):
     citation: str
 
 
+class TaxBreakdownResponse(BaseModel):
+    igst: str
+    cgst: str
+    sgst: str
+    cess: str
+    total: str
+
+
+class Table4RowResponse(BaseModel):
+    row_key: str
+    description: str
+    tax: TaxBreakdownResponse
+    invoice_count: int
+    invoice_refs: list[str]
+
+
+class DraftGSTR3BResponse(BaseModel):
+    a5_all_other_itc: Table4RowResponse
+    b1_permanent_reversals: Table4RowResponse
+    b2_temporary_reversals: Table4RowResponse
+    c_net_itc: Table4RowResponse
+    d1_reclaimed: Table4RowResponse
+    d2_ineligible: Table4RowResponse
+    disclaimer: str
+
+
 class ReconcileResponse(BaseModel):
     tolerance_rupees: str
     books_rows: int
@@ -51,6 +78,7 @@ class ReconcileResponse(BaseModel):
     summary: dict[str, int]  # invoices per label
     tax_by_label: dict[str, str]  # total tax per label (books side; GSTR-2B if only there)
     explanations: dict[str, ExplanationResponse] = Field(default_factory=dict)
+    draft_3b: DraftGSTR3BResponse | None = None
     results: list[InvoiceResult]
     disclaimer: str = "Reconciliation aid, not tax advice. Check results before filing."
 
@@ -133,6 +161,33 @@ async def reconcile_endpoint(
         for label in active_summary
         if label in EXPLANATIONS
     }
+
+    def _row_response(row: Table4Row) -> Table4RowResponse:
+        return Table4RowResponse(
+            row_key=row.row_key,
+            description=row.description,
+            tax=TaxBreakdownResponse(
+                igst=f"{row.tax.igst:.2f}",
+                cgst=f"{row.tax.cgst:.2f}",
+                sgst=f"{row.tax.sgst:.2f}",
+                cess=f"{row.tax.cess:.2f}",
+                total=f"{row.tax.total:.2f}",
+            ),
+            invoice_count=row.invoice_count,
+            invoice_refs=row.invoice_refs,
+        )
+
+    t4 = compile_table4(books, twob, results)
+    draft_3b_resp = DraftGSTR3BResponse(
+        a5_all_other_itc=_row_response(t4.a5_all_other_itc),
+        b1_permanent_reversals=_row_response(t4.b1_permanent_reversals),
+        b2_temporary_reversals=_row_response(t4.b2_temporary_reversals),
+        c_net_itc=_row_response(t4.c_net_itc),
+        d1_reclaimed=_row_response(t4.d1_reclaimed),
+        d2_ineligible=_row_response(t4.d2_ineligible),
+        disclaimer=t4.disclaimer,
+    )
+
     return ReconcileResponse(
         tolerance_rupees=f"{tol:.2f}",
         books_rows=len(books),
@@ -140,5 +195,6 @@ async def reconcile_endpoint(
         summary=active_summary,
         tax_by_label={label: f"{tax[label]:.2f}" for label in LABELS if label in tax},
         explanations=explanations,
+        draft_3b=draft_3b_resp,
         results=items,
     )

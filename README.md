@@ -17,8 +17,8 @@ A date-aware GST compliance assistant for small businesses and their accountants
 | M1 | Baseline RAG: ingestion, embeddings, vector search, `/ask`, evaluation harness | ✅ |
 | M2 | Retrieval and answer quality, measured by ablations | ✅ |
 | M3 | Observability, cost, latency | ✅ |
-| M4 | ITC reconciliation + invoice checker | |
-| M4b | Return preparation | |
+| M4 | ITC reconciliation + invoice checker | ✅ |
+| M4b | Return preparation | ✅ |
 | M5 | Data freshness + safety | |
 | M6 | Hardening + launch | |
 
