@@ -182,7 +182,17 @@ async def test_ask_generated_answer_marks_cited_and_invalid(client: AsyncClient)
         "SAMPLE-RULES#2": False,
     }
     assert body["invalid_citations"] == ["MADE-UP#9"]
-    assert body["disclaimer"] == "Information, not tax advice."
+    assert "Information, not tax advice." in body["disclaimer"]
+    assert "Law versions used: Act; Rules." in body["disclaimer"]
+
+
+async def test_ask_disclaimer_includes_law_versions(client: AsyncClient) -> None:
+    client.app.dependency_overrides[get_llm] = lambda: None  # type: ignore[attr-defined]
+    r = await client.post("/ask", json={"question": "What is the rule?"})
+    assert r.status_code == 200
+    disclaimer = r.json()["disclaimer"]
+    assert "Information, not tax advice." in disclaimer
+    assert "Law versions used: Act; Rules." in disclaimer
 
 
 async def test_ask_returns_502_when_llm_fails(client: AsyncClient) -> None:
