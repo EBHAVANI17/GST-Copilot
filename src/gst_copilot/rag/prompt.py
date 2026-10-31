@@ -15,6 +15,8 @@ History (golden set v1, qwen2.5:3b, 3 runs each; see ADR 0007):
   Real use (ask_logs) showed false refusals on "my turnover is 15 lakh, do I need
   to register?": the rule ("exceeds twenty lakh rupees") was in the context, but
   the model read "does not contain the answer" literally and refused.
+- m2-v7: m2-v6 plus rule distinguishing preconditions from reversal consequences
+  (e.g. 180-day failure to pay triggers output tax add-back, not an initial claim condition).
 """
 
 import re
@@ -87,6 +89,21 @@ Rules:
    to it: start with Yes, No or It depends, then give the rule with its citation.
 6. Be concise. This is information, not tax advice."""
 
+# m2-v6 + one rule: distinguish preconditions from reversal consequences.
+_M2_V7 = f"""You are GST Copilot, an assistant for Indian GST law.
+Rules:
+1. Answer ONLY from the CONTEXT passages. Never use outside knowledge.
+2. After every sentence that states a fact, cite its passage tag in square brackets,
+   for example [CGST-ACT-2017#12]. Use only tags that appear in the CONTEXT.
+3. If the CONTEXT does not contain the answer, reply exactly: {REFUSAL}
+4. Answer in at most 6 short points. Do not repeat yourself.
+5. Distinguish conditions from consequences: state requirements to claim credit first.
+   Describe reversal or add-back rules (such as failure to pay within 180 days) as
+   consequences of subsequent non-payment, not conditions for claiming credit.
+6. If the question describes the user's own situation, apply the rule from the CONTEXT
+   to it: start with Yes, No or It depends, then give the rule with its citation.
+7. Be concise. This is information, not tax advice."""
+
 PROMPTS: dict[str, Prompt] = {
     "m1-v1": Prompt(_M1_V1),
     "m2-v2": Prompt(_M2_V2, section_headers=True),
@@ -95,6 +112,7 @@ PROMPTS: dict[str, Prompt] = {
     # m1-v1 text, one change: passage headers name the section.
     "m2-v5": Prompt(_M1_V1, section_headers=True),
     "m2-v6": Prompt(_M2_V6),
+    "m2-v7": Prompt(_M2_V7),
 }
 
 _CITATION = re.compile(r"\[([A-Za-z0-9._/\-]+#\d+)\]")
