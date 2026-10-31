@@ -46,18 +46,48 @@ client ─→ FastAPI /ask, /ask/stream:
           /health, /ready (waits for model warm-up)
 ```
 
-Design decisions are recorded in [docs/adr](docs/adr). Key architectural choices include:
+## Design decisions
 
-- **Storage & Infrastructure:** [ADR 0002](docs/adr/0002-postgres-pgvector-as-single-store.md) (Postgres + pgvector as unified operational and vector store), [ADR 0029](docs/adr/0029-m6-hardening-and-launch.md) (QueuePool tuning, security headers, CORS, graceful shutdown).
-- **Ingestion & Text Processing:** [ADR 0004](docs/adr/0004-structure-aware-chunking.md) (Statutory section-boundary chunking), [ADR 0010](docs/adr/0010-pdf-text-repair.md) (Official PDF repair and OCR artifact cleanup).
-- **Retrieval Precision:** [ADR 0005](docs/adr/0005-hybrid-retrieval.md) (Hybrid dense/sparse search), [ADR 0006](docs/adr/0006-cross-encoder-reranker.md) (Cross-encoder reranking), [ADR 0008](docs/adr/0008-section-expansion.md) (Full section context expansion), [ADR 0028](docs/adr/0028-date-aware-retrieval.md) (Date-aware temporal SQL filtering).
-- **Deterministic Core vs Model Role:** [ADR 0019](docs/adr/0019-itc-reconciliation-data.md) (*"Deterministic rules decide; a model only explains"*), [ADR 0020](docs/adr/0020-reconciliation-matcher.md) / [ADR 0022](docs/adr/0022-hard-reconciliation-data.md) (Deterministic 10-category reconciliation engine), [ADR 0023](docs/adr/0023-invoice-checker.md) (Format, Mod-36 GSTIN checksum, and arithmetic checks), [ADR 0026](docs/adr/0026-reconciliation-explanations.md) (Statutory citations and action guidance), [ADR 0027](docs/adr/0027-draft-gstr3b-table4.md) (Auditable Form GSTR-3B Table 4 return compilation).
-- **Safety, Freshness & Observability:** [ADR 0012](docs/adr/0012-ask-logs-and-feedback.md) (AskLog and feedback tracing), [ADR 0024](docs/adr/0024-notification-watcher.md) (24-hour gazette SLA and `/ready` freshness checks), [ADR 0025](docs/adr/0025-ask-safety.md) (Input boundaries and prompt injection defense).
+### What this is
+GST Copilot helps with Indian GST input tax credit (ITC): it answers
+law questions with citations, reconciles a purchase register against
+GSTR-2B, checks single invoices, and drafts GSTR-3B Table 4.
+It is a reconciliation and information aid, not tax advice.
+All reconcile and invoice testing uses synthetic data.
+
+### 1. Scope and assumptions
+- **Users:** small businesses and accountants preparing monthly returns.
+- **Human in the loop:** the AI only answers law questions; a person decides what to file.
+- **Statutory law source:** law is loaded from official CBIC PDFs. Versions and as-of dates are listed in `corpus/manifest.csv` and dynamically surfaced in every `/ask` response. The loaded Act is as of 30-09-2020, so answers reflect that statutory snapshot.
+- **Unverified rules:** the place-of-supply (tax type) rule is explicitly marked unverified in code and ADRs.
+
+### 2. Architecture
+- **Law Q&A (`/ask`):** vector search over section-wise chunks in Postgres + pgvector ([ADR 0002](docs/adr/0002-postgres-pgvector-as-single-store.md), [ADR 0004](docs/adr/0004-structure-aware-chunking.md)), section context expansion ([ADR 0008](docs/adr/0008-section-expansion.md)), a cross-encoder reranker ([ADR 0006](docs/adr/0006-cross-encoder-reranker.md), [ADR 0017](docs/adr/0017-rerank-10-candidates.md)), then a local LLM (Ollama, `qwen2.5:3b`) that must cite chunk references. Keyword search exists but is off by default ([ADR 0005](docs/adr/0005-hybrid-retrieval.md)), so retrieval is vector + rerank, not hybrid.
+- **Numbers use plain code, not AI ([ADR 0019](docs/adr/0019-itc-reconciliation-data.md)):** reconciliation matching, GSTIN Mod-36 checksum, invoice arithmetic, and the Table 4 draft are deterministic, so the same input always gives the exact same output.
+- **Reconciliation engine (`/reconcile`):** compares purchase register and GSTR-2B CSVs, labels each invoice across 10 categories ([ADR 0020](docs/adr/0020-reconciliation-matcher.md), [ADR 0022](docs/adr/0022-hard-reconciliation-data.md)), totals tax per label, provides statutory action guidance ([ADR 0026](docs/adr/0026-reconciliation-explanations.md)), and compiles an auditable Table 4 draft ([ADR 0027](docs/adr/0027-draft-gstr3b-table4.md)) linking every amount back to invoice IDs. Uploaded files are processed strictly in memory and never stored on disk or in the database.
+- **Date-aware corpus ([ADR 0028](docs/adr/0028-date-aware-retrieval.md)):** documents carry `effective_from` / `effective_to`, so superseded law can be excluded for current questions.
+
+### 3. Observability and evaluation
+- **Audit logging:** each `/ask` call is logged (`AskLog`; [ADR 0012](docs/adr/0012-ask-logs-and-feedback.md)); users can send feedback via `/feedback`.
+- **Golden set:** 34 questions (29 answerable with expected sections, 5 unanswerable) with keywords verified against real PDFs (`python -m gst_copilot.evals.check`). Scores under `m2-v7`: `section_hit@5` 0.793, `citation_section_accuracy` 0.812 (81.2%), `correct_refusal` 1.0 (100%), `false_refusal` 0.103 (10.3%).
+- **Known failure & prompt iteration:** the 3B model can invert the 180-day proviso (an add-back consequence turned into an entitlement condition). Logged as `q044` in `evals/golden.jsonl`. Prompt change `m2-v7` vs `m2-v3` on the full golden set: citation section accuracy jumped from 0.611 to 0.812 (+20.1%), false refusals dropped from 0.138 to 0.103 (-3.5%), and the 180-day rule is accurately formulated as an output-tax add-back consequence.
+- **Citation boundary:** citation checks confirm that a cited chunk exists, not that the generated claim matches it. Answers always require human review.
+
+### 4. Production and operations
+- **Hardened stack ([ADR 0029](docs/adr/0029-m6-hardening-and-launch.md)):** FastAPI, Docker Compose (Postgres with pgvector, Redis), `/health` and `/ready`, request IDs, security headers, CORS, SQLAlchemy QueuePool tuning, graceful shutdown, and 274 automated tests.
+- **Freshness monitoring:** `/ready` reports corpus age so stale law is visible; 24-hour CBIC notification monitoring procedure defined in [ADR 0024](docs/adr/0024-notification-watcher.md).
+- **Safety boundaries ([ADR 0025](docs/adr/0025-ask-safety.md)):** input length limits (1,000 chars) and prompt-injection resistance verified.
+
+### 5. Limits and what I'd do next
+- **Local model capacity:** 3.6 s median latency (p50); switching to a larger model (e.g. `qwen2.5:7b`) is a single configuration line in `.env` and natively handles complex proviso reasoning without prompt tradeoffs.
+- **Corpus updates:** index current amendments to the CGST Act and Rules (e.g. the post-2022 30-November cut-off under Notification 18/2022-CT), then re-run the golden set.
+- **Tax-type rules:** verify place-of-supply exceptions (e.g. SEZ supplies) against the IGST Act.
+- **Hybrid search tuning:** evaluate BM25 / ParadeDB once term-frequency dilution in Postgres `ts_rank_cd` is addressed.
 
 ### Statutory Corpus Coverage
 
 Built on public statutory law:
-- **Acts & Rules:** Central Goods and Services Tax (CGST) Act 2017, Integrated Goods and Services Tax (IGST) Act 2017, and CGST Rules 2017.
+- **Acts & Rules:** Central Goods and Services Tax (CGST) Act 2017 (updated to 30-09-2020), Integrated Goods and Services Tax (IGST) Act 2017, and CGST Rules 2017 (Part A, amended up to 24-09-2021).
 - **Circulars & Notifications:** Key administrative and clarification circulars including Circular No. 170/02/2022-GST (GSTR-3B Table 4 reporting) and Circular No. 193/05/2023-GST.
 - **Temporal Freshness:** Monitored against CBIC gazette releases under ADR 0024. Ingest new notifications or amendments by updating `corpus/manifest.csv` and running `python -m gst_copilot.ingest corpus/manifest.csv`.
 
