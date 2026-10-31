@@ -21,6 +21,7 @@ from gst_copilot import __version__
 from gst_copilot.api.warmup import models_ready
 from gst_copilot.config import get_settings
 from gst_copilot.db.session import ping_database
+from gst_copilot.ingest.freshness import get_corpus_freshness
 
 router = APIRouter(tags=["health"])
 log = logging.getLogger(__name__)
@@ -39,6 +40,8 @@ class DependencyStatus(BaseModel):
 
 class Readiness(BaseModel):
     status: str
+    corpus_date: str | None = None
+    corpus_freshness_days: int | None = None
     checks: dict[str, DependencyStatus]
 
 
@@ -86,4 +89,10 @@ async def ready(response: Response) -> Readiness:
     all_ok = all(c.ok for c in checks.values())
     if not all_ok:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    return Readiness(status="ready" if all_ok else "degraded", checks=checks)
+    freshness = get_corpus_freshness()
+    return Readiness(
+        status="ready" if all_ok else "degraded",
+        corpus_date=freshness.corpus_date_iso,
+        corpus_freshness_days=freshness.days_since_newest,
+        checks=checks,
+    )
