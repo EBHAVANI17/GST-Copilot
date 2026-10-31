@@ -120,8 +120,8 @@ class Settings(BaseSettings):
     judge_api_key: str = ""
     judge_model: str = "qwen2.5:7b"
     judge_timeout_seconds: float = 300.0
-    # Which prompt in rag/prompt.py PROMPTS to use. m2-v3 won the ablation (ADR 0007).
-    prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5", "m2-v6", "m2-v7"] = "m2-v3"
+    # Which prompt in rag/prompt.py PROMPTS to use. m2-v7 won the ablation.
+    prompt_version: Literal["m1-v1", "m2-v2", "m2-v3", "m2-v4", "m2-v5", "m2-v6", "m2-v7"] = "m2-v7"
 
     @property
     def chunker_version(self) -> str:
