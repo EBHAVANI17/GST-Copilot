@@ -46,7 +46,18 @@ def get_corpus_freshness(
             days_since_newest=None,
         )
 
-    entries = load_manifest(path)
+    try:
+        entries = load_manifest(path, check_files=False)
+    except Exception:
+        return FreshnessReport(
+            manifest_path=path,
+            total_documents=0,
+            by_type={},
+            newest_doc_id=None,
+            newest_doc_title=None,
+            newest_issued_on=None,
+            days_since_newest=None,
+        )
     today = as_of or date.today()
 
     by_type = dict(Counter(e.doc_type for e in entries))

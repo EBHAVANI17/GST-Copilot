@@ -32,10 +32,6 @@ def test_missing_manifest_returns_empty_report(tmp_path: Path) -> None:
 
 
 def test_manifest_without_issued_dates(tmp_path: Path) -> None:
-    raw_dir = tmp_path / "raw"
-    raw_dir.mkdir()
-    (raw_dir / "1.pdf").write_bytes(b"%PDF-1.4 dummy")
-
     csv_file = tmp_path / "manifest.csv"
     csv_file.write_text(
         "doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file\n"
@@ -46,6 +42,20 @@ def test_manifest_without_issued_dates(tmp_path: Path) -> None:
     assert report.total_documents == 1
     assert report.newest_doc_id is None
     assert report.days_since_newest is None
+
+
+def test_freshness_works_when_raw_files_missing(tmp_path: Path) -> None:
+    csv_file = tmp_path / "manifest.csv"
+    csv_file.write_text(
+        "doc_id,doc_type,title,source_url,issued_on,effective_from,effective_to,file\n"
+        "ACT-1,act,Title 1,https://x/1,2023-01-01,2023-01-01,,raw/nonexistent.pdf\n",
+        encoding="utf-8",
+    )
+    report = get_corpus_freshness(csv_file, as_of=date(2023, 1, 11))
+    assert report.total_documents == 1
+    assert report.newest_doc_id == "ACT-1"
+    assert report.corpus_date_iso == "2023-01-01"
+    assert report.days_since_newest == 10
 
 
 def test_cli_freshness_command(capsys: pytest.CaptureFixture[str]) -> None:

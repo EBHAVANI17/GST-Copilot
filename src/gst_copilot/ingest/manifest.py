@@ -47,7 +47,7 @@ def _date(value: str, field: str, line: int) -> date | None:
         raise ManifestError(f"line {line}: {field} must be YYYY-MM-DD, got {value!r}") from exc
 
 
-def load_manifest(path: Path) -> list[ManifestEntry]:
+def load_manifest(path: Path, *, check_files: bool = True) -> list[ManifestEntry]:
     """Read and validate the manifest. Fails loudly on the first bad row."""
     entries: list[ManifestEntry] = []
     seen: set[str] = set()
@@ -67,7 +67,7 @@ def load_manifest(path: Path) -> list[ManifestEntry]:
             if doc_type not in DOC_TYPES:
                 raise ManifestError(f"line {line}: doc_type must be one of {sorted(DOC_TYPES)}")
             file_path = (path.parent / row["file"].strip()).resolve()
-            if not file_path.is_file():
+            if check_files and not file_path.is_file():
                 raise ManifestError(f"line {line}: file not found: {file_path}")
             entries.append(
                 ManifestEntry(
