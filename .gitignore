@@ -26,3 +26,4 @@ reports/
 
 # Synthetic data: regenerate with python -m gst_copilot.recon.synth (same seed, same files)
 data/synthetic/
+sample_data/

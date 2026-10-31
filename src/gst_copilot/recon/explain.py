@@ -47,7 +47,10 @@ EXPLANATIONS: dict[Label, LabelExplanation] = {
             "temporarily reverse the excess in 4(B)(2). If 2B < books, claim 2B amount "
             "and request supplier to upload an amendment in GSTR-1."
         ),
-        gstr3b_row="Table 4(A)(5) (capped at lower amount); excess reversed in Table 4(B)(2)",
+        gstr3b_row=(
+            "Table 4(A)(5) capped at GSTR-2B; excess reversed in Table 4(B)(2) "
+            "only when GSTR-2B > books"
+        ),
         citation="CGST Act s.16(2)(c); Circular 170/02/2022-GST Para 4.3",
     ),
     "invoice_no_format": LabelExplanation(
