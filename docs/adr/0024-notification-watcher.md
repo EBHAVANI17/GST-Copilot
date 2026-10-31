@@ -1,7 +1,7 @@
 # 24. Keeping the corpus fresh: a daily manual check and one ingest command (design)
 
 Date: 2026-10-30
-Status: Proposed (design only; no code in this change)
+Status: Accepted (follow-up 1 implemented)
 
 ## Context
 
@@ -54,7 +54,8 @@ The 24-hour target is measured as: date of the merged manifest commit minus `iss
 ### Follow-ups (each its own task, PR and tests)
 
 1. `python -m gst_copilot.ingest.freshness`: prints the newest `issued_on` in the
-   manifest and the days since; `/ready` (or `/health`) reports the corpus date.
+   manifest and the days since; `/ready` reports `corpus_date` and `corpus_freshness_days`.
+   *(Implemented in `gst_copilot.ingest.freshness` and `gst_copilot.api.health`)*
 2. Date-aware retrieval: filter chunks by `effective_from` / `effective_to` against the
    date the question is about (today by default). Needs its own ADR and an eval run
    before and after.
