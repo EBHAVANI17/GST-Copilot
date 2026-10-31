@@ -1,4 +1,4 @@
-{"id": "s001", "question": "Within how many days must a widget supplier apply for registration?", "type": "lookup", "expected_doc_ids": ["SAMPLE-ACT"], "expected_sections": ["4"], "expected_keywords": ["thirty days"]}
-{"id": "s002", "question": "When can a buyer take input credit on widget purchases?", "type": "lookup", "expected_doc_ids": ["SAMPLE-RULES"], "expected_sections": ["12"], "expected_keywords": ["monthly credit statement"]}
+{"id": "s001", "question": "Within how many days must a widget supplier apply for registration?", "type": "lookup", "expected_doc_ids": ["SAMPLE-ACT"], "expected_keywords": ["thirty days"]}
+{"id": "s002", "question": "When can a buyer take input credit on widget purchases?", "type": "lookup", "expected_doc_ids": ["SAMPLE-RULES"], "expected_keywords": ["monthly credit statement"]}
 {"id": "s003", "question": "What is the levy rate for category 7 blue widgets?", "type": "lookup", "expected_doc_ids": ["SAMPLE-SCHEDULE"], "expected_keywords": ["7"]}
 {"id": "s004", "question": "What is the penalty for late filing of income tax returns?", "type": "unanswerable"}

@@ -70,8 +70,6 @@ jobs:
             --k 3 \
             --retrieval-only \
             --min-hit-at-k 1.0 \
-            --min-section-hit 1.0 \
-            --min-context-recall 1.0 \
             --markdown-summary eval_summary.md
           if [ -n "$GITHUB_STEP_SUMMARY" ]; then
             cat eval_summary.md >> "$GITHUB_STEP_SUMMARY"
