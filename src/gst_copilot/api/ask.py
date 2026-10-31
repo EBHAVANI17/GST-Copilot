@@ -113,8 +113,25 @@ async def ask_endpoint(
         prompt_version=result.prompt_version,
         model=result.model,
         timings_ms=result.timings_ms,
+        disclaimer=_build_disclaimer(result),
         as_of=result.as_of,
     )
+
+
+def _build_disclaimer(result: AskResult) -> str:
+    base = "Information, not tax advice."
+    chunks = result.context or result.retrieved
+    if not chunks:
+        return base
+    titles: list[str] = []
+    seen: set[str] = set()
+    for c in chunks:
+        if c.title and c.title not in seen:
+            seen.add(c.title)
+            titles.append(c.title)
+    if not titles:
+        return base
+    return f"{base} Law versions used: {'; '.join(titles)}."
 
 
 def _passages(result: AskResult) -> list[Passage]:
@@ -232,6 +249,7 @@ async def ask_stream_endpoint(
                             prompt_version=r.prompt_version,
                             model=r.model,
                             timings_ms=r.timings_ms,
+                            disclaimer=_build_disclaimer(r),
                             as_of=r.as_of,
                         ),
                     )
