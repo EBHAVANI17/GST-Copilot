@@ -45,6 +45,140 @@ const ICONS = {
 };
 
 // ==========================================
+// 1b. Cursor Movement & Motion Graphics Engine
+// ==========================================
+
+function initCursorAndMotion() {
+  const dot = document.getElementById('custom-cursor-dot');
+  const ring = document.getElementById('custom-cursor-ring');
+  const glow = document.getElementById('cursor-glow');
+
+  if (!dot || !ring) return;
+
+  // Disable custom cursor on touch devices
+  if (window.matchMedia('(pointer: coarse)').matches) {
+    dot.style.display = 'none';
+    ring.style.display = 'none';
+    if (glow) glow.style.display = 'none';
+    return;
+  }
+
+  let mouseX = window.innerWidth / 2;
+  let mouseY = window.innerHeight / 2;
+  let ringX = mouseX;
+  let ringY = mouseY;
+  let isVisible = false;
+
+  window.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+
+    if (!isVisible) {
+      isVisible = true;
+      dot.style.opacity = '1';
+      ring.style.opacity = '1';
+      if (glow) glow.style.opacity = '1';
+    }
+
+    // Instant dot movement
+    dot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) translate3d(-50%, -50%, 0)`;
+
+    // Global ambient cursor glow
+    document.documentElement.style.setProperty('--mouse-x', `${mouseX}px`);
+    document.documentElement.style.setProperty('--mouse-y', `${mouseY}px`);
+  });
+
+  document.addEventListener('mouseleave', () => {
+    isVisible = false;
+    dot.style.opacity = '0';
+    ring.style.opacity = '0';
+    if (glow) glow.style.opacity = '0';
+  });
+
+  // Smooth lerp loop for follower ring
+  function animateRing() {
+    ringX += (mouseX - ringX) * 0.18;
+    ringY += (mouseY - ringY) * 0.18;
+
+    ring.style.transform = `translate3d(${ringX.toFixed(2)}px, ${ringY.toFixed(2)}px, 0) translate3d(-50%, -50%, 0)`;
+
+    requestAnimationFrame(animateRing);
+  }
+  requestAnimationFrame(animateRing);
+
+  // Dynamic hover reaction over interactive elements
+  const hoverSelector =
+    'button, a, input, textarea, select, .chip-btn, .summary-card, .citation-chip, .nav-tab, .dropzone, .source-card, .inspect-inv-btn, .theme-toggle-btn';
+
+  document.addEventListener('mouseover', (e) => {
+    if (e.target.closest(hoverSelector)) {
+      ring.classList.add('cursor-hover');
+    }
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (e.target.closest(hoverSelector)) {
+      ring.classList.remove('cursor-hover');
+    }
+  });
+
+  document.addEventListener('mousedown', () => ring.classList.add('cursor-down'));
+  document.addEventListener('mouseup', () => ring.classList.remove('cursor-down'));
+
+  // Card surface spotlight
+  document.querySelectorAll('.panel-card, .summary-card').forEach((card) => {
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      card.style.setProperty('--card-mouse-x', `${x}px`);
+      card.style.setProperty('--card-mouse-y', `${y}px`);
+    });
+  });
+}
+
+// ==========================================
+// 1c. Light Theme & Theme Switcher
+// ==========================================
+
+function initTheme() {
+  const toggleBtn = document.getElementById('theme-toggle');
+  const sunIcon = toggleBtn?.querySelector('.sun-icon');
+  const moonIcon = toggleBtn?.querySelector('.moon-icon');
+  const themeLabel = document.getElementById('theme-label');
+
+  // Enforce light theme by default
+  const savedTheme = localStorage.getItem('gst_theme') || 'light';
+  applyTheme(savedTheme);
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      const next = current === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      localStorage.setItem('gst_theme', next);
+    });
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      sunIcon?.classList.add('hidden');
+      moonIcon?.classList.remove('hidden');
+      if (themeLabel) themeLabel.textContent = 'Dark';
+    } else {
+      sunIcon?.classList.remove('hidden');
+      moonIcon?.classList.add('hidden');
+      if (themeLabel) themeLabel.textContent = 'Light';
+    }
+  }
+}
+
+// Initialize motion and theme on script load
+initCursorAndMotion();
+initTheme();
+
+// ==========================================
 // 2. State & Slide-Over Drawer
 // ==========================================
 

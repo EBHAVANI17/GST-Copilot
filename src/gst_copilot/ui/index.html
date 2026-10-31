@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,19 @@
   <link rel="stylesheet" href="/ui/app.css">
 </head>
 <body>
+  <!-- Ambient Motion Graphic Background -->
+  <div class="ambient-background" aria-hidden="true">
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+    <div class="ambient-mesh"></div>
+  </div>
+
+  <!-- Interactive Cursor Follower -->
+  <div id="cursor-glow" class="cursor-glow" aria-hidden="true"></div>
+  <div id="custom-cursor-ring" class="cursor-ring" aria-hidden="true"></div>
+  <div id="custom-cursor-dot" class="cursor-dot" aria-hidden="true"></div>
+
   <div class="app-layout">
     <!-- Header -->
     <header class="app-header">
@@ -28,6 +41,15 @@
             <span class="status-dot status-unknown" id="status-dot"></span>
             <span class="status-label" id="status-label">Checking system...</span>
           </div>
+          <button type="button" class="theme-toggle-btn" id="theme-toggle" title="Toggle Theme" aria-label="Toggle Theme">
+            <svg class="theme-icon sun-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
+            </svg>
+            <svg class="theme-icon moon-icon hidden" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+            </svg>
+            <span id="theme-label" class="theme-label">Light</span>
+          </button>
         </div>
       </div>
       <div class="header-corpus">
